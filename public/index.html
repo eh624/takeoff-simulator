@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>여객기 이륙 시뮬레이터</title>
+<meta name="description" content="기종·공항·날씨를 골라 이륙 거리와 V1을 계산하고, 엔진 고장 판단으로 경험치를 쌓는 이륙 시뮬레이터">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<style>
+/* Layout: 왼쪽 조건 패널 + 오른쪽 활주로 측면도·그래프(같은 거리 축 공유). 공항 표지판(노란 바탕/검은 글씨) 문법을 마커에 사용 */
+:root {
+  --bg: #EDF0F4;
+  --panel: #FFFFFF;
+  --ink: #15233F;
+  --muted: #5A677C;
+  --line: #D4DAE3;
+  --sky: #DCE6F2;
+  --ground: #C9D3C4;
+  --runway: #3B4352;
+  --plane: #FBFCFE;
+  --trace: #1F5FBF;
+  --sign: #F4C300;
+  --sign-ink: #111111;
+  --stop: #C3332B;
+  --go: #1E8556;
+  --warn: #B86E00;
+  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0C1322; --panel: #131C2F; --ink: #E5EAF2; --muted: #93A0B6; --line: #26324A;
+    --sky: #111C33; --ground: #1B2A26; --runway: #2B3345; --plane: #DCE3EE; --trace: #6FA8FF;
+    --stop: #FF6A5C; --go: #3FD68E; --warn: #F2A93B; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0C1322; --panel: #131C2F; --ink: #E5EAF2; --muted: #93A0B6; --line: #26324A;
+  --sky: #111C33; --ground: #1B2A26; --runway: #2B3345; --plane: #DCE3EE; --trace: #6FA8FF;
+  --stop: #FF6A5C; --go: #3FD68E; --warn: #F2A93B; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { color-scheme: light; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+[hidden] { display: none !important; }
+img { max-width: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 40px;
+}
+.wrap { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+header { display: flex; flex-wrap: wrap; align-items: end; gap: 12px 20px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: 2.4rem; line-height: 1; margin: 0; letter-spacing: .01em; text-wrap: balance; }
+.badge { font-family: var(--display); font-weight: 700; font-size: 1rem; background: var(--sign); color: var(--sign-ink); padding: 2px 8px; border-radius: 2px; letter-spacing: .06em; }
+header p { margin: 0; color: var(--muted); max-width: 60ch; }
+
+.grid { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+.controls { padding: 18px; display: flex; flex-direction: column; gap: 18px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field > label, .legend { font-size: .78rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+.field output, .val { font-family: var(--mono); color: var(--ink); text-transform: none; letter-spacing: 0; font-size: .85rem; }
+select, input[type=number] {
+  font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; width: 100%;
+}
+input[type=range] { width: 100%; accent-color: var(--trace); }
+.spec { font-size: .8rem; color: var(--muted); font-family: var(--mono); }
+.seg { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { text-align: center; padding: 7px 2px; font-size: .85rem; cursor: pointer; border-left: 1px solid var(--line); }
+.seg label:first-of-type { border-left: 0; }
+.seg input:checked + label { background: var(--ink); color: var(--panel); font-weight: 600; }
+.seg input:focus-visible + label { outline: 2px solid var(--trace); outline-offset: -2px; }
+.windrow { display: grid; grid-template-columns: 1fr 84px; gap: 12px; align-items: center; }
+.windrow .field { gap: 4px; }
+#dial { width: 84px; height: 84px; }
+.warnline { font-size: .82rem; color: var(--stop); font-weight: 500; }
+
+.stage { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.viewer { padding: 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+canvas { display: block; width: 100%; }
+#scene { height: 230px; border-radius: 4px; }
+#chart { height: 220px; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button {
+  font: inherit; font-weight: 600; font-size: .9rem; border-radius: 4px; padding: 8px 14px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+}
+button.primary { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+button.danger { color: var(--stop); border-color: var(--stop); background: transparent; }
+button:disabled { opacity: .4; cursor: default; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--trace); outline-offset: 2px; }
+.speed { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: .82rem; color: var(--muted); }
+.speed select { width: auto; padding: 5px 8px; }
+.readout { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.readout div { background: var(--panel); padding: 8px 10px; display: flex; flex-direction: column; min-width: 0; }
+.readout span { font-size: .72rem; color: var(--muted); letter-spacing: .04em; }
+.readout b { font-family: var(--mono); font-weight: 500; font-size: 1.05rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 560px) { .readout { grid-template-columns: repeat(3, minmax(0, 1fr)); } .readout div:last-child { grid-column: span 2; } .speed { margin-left: 0; } }
+.cap { font-size: .78rem; color: var(--muted); margin-bottom: -6px; }
+.decide[hidden] { display: none; }
+#rP { white-space: normal; font-size: .92rem; }
+.chk { display: flex; align-items: center; gap: 6px; font-size: .85rem; color: var(--muted); cursor: pointer; }
+.chk input { accent-color: var(--warn); width: 16px; height: 16px; }
+.decide { border: 2px solid var(--warn); border-radius: 4px; padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; background: var(--panel); }
+.dtext { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dtext b { font-family: var(--display); font-size: 1.3rem; color: var(--warn); letter-spacing: .03em; }
+.dtext span { font-family: var(--mono); font-size: .9rem; }
+.dbtns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.count { font-size: .82rem; color: var(--muted); }
+.count b { font-family: var(--mono); color: var(--ink); }
+.msg { font-size: .9rem; min-height: 1.4em; }
+
+.results { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+.verdict { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.pill { font-family: var(--display); font-weight: 700; font-size: 1.15rem; letter-spacing: .05em; padding: 2px 12px; border-radius: 3px; color: var(--panel); }
+.pill.go { background: var(--go); } .pill.warn { background: var(--warn); } .pill.no { background: var(--stop); }
+.verdict p { margin: 0; flex: 1 1 260px; }
+dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px 20px; margin: 0; }
+dl div { border-top: 1px solid var(--line); padding-top: 8px; min-width: 0; }
+dt { font-size: .75rem; color: var(--muted); }
+dd { margin: 0; font-family: var(--mono); font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+dd small { font-size: .78rem; color: var(--muted); }
+h2 { font-family: var(--display); font-weight: 700; font-size: 1.25rem; margin: 0; letter-spacing: .02em; }
+.note { font-size: .82rem; color: var(--muted); padding: 14px 18px; }
+.note ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 2px; }
+/* 계정 · 경험치 */
+.account { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 0; }
+#authIn { display: grid; grid-template-columns: auto auto; gap: 4px 12px; align-items: center; justify-items: end; }
+.me { display: flex; gap: 8px; align-items: baseline; }
+.rank { font-family: var(--display); font-weight: 700; background: var(--sign); color: var(--sign-ink); padding: 0 6px; border-radius: 2px; letter-spacing: .03em; }
+.linkbtn { border: 0; background: none; padding: 0; font-weight: 600; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line); }
+.linkbtn.small { font-weight: 500; font-size: .8rem; color: var(--muted); }
+.xpbar { grid-column: 1 / -1; width: 220px; max-width: 100%; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.xpbar i { display: block; height: 100%; background: var(--trace); transition: width .6s ease; }
+.xptext { grid-column: 1 / -1; font-family: var(--mono); font-size: .78rem; color: var(--muted); }
+#nickForm { grid-column: 1 / -1; display: flex; gap: 6px; }
+#nickForm input { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--ink); width: 150px; }
+#nickErr { grid-column: 1 / -1; font-size: .8rem; color: var(--stop); }
+.loginbox { padding: 16px 18px; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.loginbox p { margin: 0; flex: 1 1 260px; color: var(--muted); font-size: .9rem; }
+.loginbox .btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.loginbox .err { flex-basis: 100%; color: var(--stop); font-size: .88rem; }
+.guest { font-size: .82rem; color: var(--muted); }
+.xpresult { border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.xphead { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.gain { font-family: var(--display); font-size: 1.6rem; color: var(--go); line-height: 1; }
+.xphead span { font-family: var(--mono); font-size: .82rem; color: var(--muted); }
+.xpresult ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.xpresult li { display: flex; justify-content: space-between; gap: 12px; font-size: .88rem; }
+.xpresult li b { font-family: var(--mono); font-weight: 500; }
+.levelup { margin: 0; font-weight: 600; color: var(--warn); }
+.muted { color: var(--muted); margin: 0; font-size: .85rem; }
+.board { padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+.board ol { margin: 0; padding: 0; list-style: none; display: grid; }
+.board li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto auto; gap: 10px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--line); }
+.board .pos { font-family: var(--display); font-weight: 700; font-size: 1.1rem; }
+.board .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board .rk { font-size: .78rem; color: var(--muted); }
+.board b { font-family: var(--mono); font-weight: 500; font-variant-numeric: tabular-nums; }
+@media (max-width: 560px) { .account { margin-left: 0; align-items: flex-start; } #authIn { justify-items: start; } .board .rk { display: none; } .board li { grid-template-columns: 28px minmax(0, 1fr) auto; } }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <span class="badge">RWY</span>
+    <h1>여객기 이륙 시뮬레이터</h1>
+    <p>기종·공항·중량·날씨를 고르면 이륙 활주 거리와 이륙결정속도(V1)를 계산하고, 활주로 위에서 이륙과 이륙 중단을 재생합니다.</p>
+    <div class="account" id="account" hidden>
+      <div id="authOut"><button type="button" id="loginBtn" class="primary">로그인</button></div>
+      <div id="authIn" hidden>
+        <div class="me"><span class="rank" id="meRank"></span><button type="button" class="linkbtn" id="nickBtn" title="이름 바꾸기"><span id="meName"></span></button></div>
+        <button type="button" class="linkbtn small" id="logoutBtn">로그아웃</button>
+        <div class="xpbar" aria-hidden="true"><i id="meBar"></i></div>
+        <span class="xptext" id="meXp"></span>
+        <form id="nickForm" hidden><input id="nick" maxlength="20" aria-label="새 이름"><button type="submit">저장</button></form>
+        <span id="nickErr" aria-live="polite"></span>
+      </div>
+    </div>
+  </header>
+
+  <div class="card loginbox" id="loginBox" hidden>
+    <p>로그인하면 이륙할 때마다 경험치가 쌓이고 순위표에 이름이 올라갑니다.</p>
+    <div class="btns">
+      <button type="button" id="login-google">Google로 계속</button>
+      <button type="button" id="login-naver">네이버로 계속</button>
+      <button type="button" id="login-apple">Apple로 계속</button>
+    </div>
+    <div class="err" id="loginErr" hidden></div>
+  </div>
+
+  <div class="grid">
+    <form class="card controls" id="form" autocomplete="off">
+      <div class="field">
+        <label for="ac">기종</label>
+        <select id="ac"></select>
+        <div class="spec" id="acSpec"></div>
+      </div>
+      <div class="field">
+        <label for="ap">출발 공항</label>
+        <select id="ap"></select>
+        <div class="spec" id="apSpec"></div>
+      </div>
+      <div class="field">
+        <label for="mass">이륙 중량 <output id="massOut"></output></label>
+        <input type="range" id="mass" step="1">
+        <div class="warnline" id="massWarn" hidden></div>
+      </div>
+      <div class="field">
+        <span class="legend">활주로 상태</span>
+        <div class="seg" id="rwy"></div>
+      </div>
+      <div class="field">
+        <label for="oat">기온 <output id="oatOut"></output></label>
+        <input type="range" id="oat" min="-30" max="45" step="1" value="15">
+      </div>
+      <div class="windrow">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div class="field">
+            <label for="wind">풍속 <output id="windOut"></output></label>
+            <input type="range" id="wind" min="0" max="25" step="0.5" value="5">
+          </div>
+          <div class="field">
+            <label for="wdir">풍향 <output id="wdirOut"></output></label>
+            <input type="range" id="wdir" min="0" max="355" step="5" value="0">
+          </div>
+        </div>
+        <svg id="dial" viewBox="0 0 84 84" role="img" aria-label="활주로 기준 바람 방향"></svg>
+      </div>
+    </form>
+
+    <section class="stage">
+      <div class="card viewer">
+        <div class="bar">
+          <button type="button" class="primary" id="go">이륙 시작</button>
+          <button type="button" class="danger" id="abort" disabled>지금 이륙 중단</button>
+          <button type="button" id="v1test">V1에서 중단해 보기</button>
+          <label class="chk" for="failForce"><input type="checkbox" id="failForce"> 엔진 고장 연습</label>
+          <label class="speed" for="spd">재생 배속
+            <select id="spd"><option value="1">1×</option><option value="2">2×</option><option value="4" selected>4×</option><option value="8">8×</option></select>
+          </label>
+        </div>
+        <p class="guest" id="guestHint" hidden>로그인하면 이륙 결과에 따라 경험치를 받습니다. 연습 모드와 'V1에서 중단해 보기'는 경험치가 없습니다.</p>
+        <canvas id="scene" aria-label="활주로 측면도"></canvas>
+        <div class="decide" id="decide" role="alertdialog" aria-labelledby="dTitle" aria-describedby="dInfo" hidden>
+          <div class="dtext"><b id="dTitle">엔진 1개 고장</b><span id="dInfo"></span></div>
+          <div class="dbtns">
+            <button type="button" class="danger" id="dStop">이륙 중단</button>
+            <button type="button" class="primary" id="dGo">계속 이륙</button>
+            <span class="count"><b id="dCount">5</b>초 뒤 자동으로 계속 이륙</span>
+          </div>
+        </div>
+        <div class="readout" aria-live="off">
+          <div><span>경과 시간</span><b id="rT">0.0 s</b></div>
+          <div><span>지면 속도</span><b id="rV">0 kt</b></div>
+          <div><span>대기 속도</span><b id="rA">0 kt</b></div>
+          <div><span>활주 거리</span><b id="rX">0 m</b></div>
+          <div><span>단계</span><b id="rP">대기</b></div>
+        </div>
+        <div class="msg" id="msg"></div>
+        <div class="xpresult" id="xpResult" aria-live="polite" hidden></div>
+        <div class="cap">대기 속도(kt) – 활주 거리(m) · 파란선 가속, 빨간선 이륙 중단</div>
+        <canvas id="chart" aria-label="거리에 따른 속도 그래프"></canvas>
+      </div>
+
+      <div class="card results">
+        <div class="verdict"><span class="pill" id="pill"></span><p id="verdictText"></p></div>
+        <dl id="facts"></dl>
+      </div>
+
+      <div class="card board" id="boardCard" hidden>
+        <h2>순위표</h2>
+        <ol id="board"></ol>
+      </div>
+
+      <div class="card note">
+        <h2>계산 가정</h2>
+        <ul>
+          <li>지상 활주 양력계수 0.6, 실속속도(Vs)는 최대 양력계수(이륙 플랩)로 계산</li>
+          <li>VR(기수 들기) = 1.10 Vs, 부양 = 1.17 Vs, V2(안전 이륙 속도) = 1.20 Vs. V1은 VR보다 클 수 없음</li>
+          <li>추력은 공기 밀도와 속도에 따라 감소하도록 근사 (정지 추력의 95%에서 시작)</li>
+          <li>35 ft 통과 거리 = 부양 거리 + 2초 전환 구간 + V2 상승각으로 35 ft까지 가는 거리. 판정은 이 거리 × 1.15 기준</li>
+          <li>엔진 1개 고장: 매 이륙마다 3% 확률(연습 모드는 항상). 고장 엔진 항력 추가, 5초 안에 고르지 않으면 계속 이륙</li>
+          <li>이륙 중단: 반응시간 2초 → 브레이크 + 스포일러 + 역추진(추력의 35%)</li>
+          <li>V1은 "가속-정지 거리 = 활주로 길이"가 되는 속도로 정의. 엔진 1개 고장 후 계속 이륙하는 경우는 고려하지 않음</li>
+          <li>기종 제원과 활주로 길이는 공개 자료 기반 근사값입니다. 교육용 모델이며 실제 운항에 쓰면 안 됩니다.</li>
+        </ul>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
