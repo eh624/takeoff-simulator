@@ -513,7 +513,7 @@ async function loadProfile() {
 function renderAccount() {
   const inEl = $('authIn'), outEl = $('authOut');
   inEl.hidden = !session; outEl.hidden = !!session;
-  if (session) $('loginBox').hidden = true;
+  if (session && $('loginBox').open) $('loginBox').close();
   $('guestHint').hidden = !!session;
   if (!session) return;
   const xp = profile?.xp ?? 0, L = levelFor(xp);
@@ -533,7 +533,8 @@ async function loadBoard() {
   $('boardCard').hidden = false;
 }
 
-function loginError(msg) { const e = $('loginErr'); e.textContent = msg; e.hidden = false; $('loginBox').hidden = false; }
+function loginError(msg) { const e = $('loginErr'); e.textContent = msg; e.hidden = false; $('loginInfo').hidden = true; openLogin(); }
+function openLogin() { const d = $('loginBox'); if (!d.open) d.showModal(); }
 
 async function initAuth() {
   try {
@@ -545,6 +546,8 @@ async function initAuth() {
   sb = window.supabase.createClient(cfg.supabaseUrl, cfg.anonKey);
   $('account').hidden = false;
   ['kakao', 'google', 'naver', 'apple'].forEach(p => { $('login-' + p).hidden = !cfg.providers?.[p]; });
+  const anySocial = ['kakao', 'google', 'naver', 'apple'].some(p => cfg.providers?.[p]);
+  $('social').hidden = $('loginOr').hidden = !anySocial;
 
   const q = new URLSearchParams(location.search);
   if (q.get('token_hash')) {        // 네이버 로그인에서 돌아옴
@@ -574,26 +577,43 @@ function pwValues() {
 }
 const authMsg = e => /invalid login/i.test(e.message) ? '이메일 또는 비밀번호가 맞지 않습니다.'
   : /not confirmed/i.test(e.message) ? '이메일 인증을 아직 마치지 않았습니다. 메일함을 확인하세요.'
-  : /already registered|already been registered/i.test(e.message) ? '이미 가입된 이메일입니다. 로그인을 눌러 주세요.'
+  : /already registered|already been registered/i.test(e.message) ? '이미 가입된 이메일입니다. 아래 로그인을 눌러 주세요.'
   : /rate limit/i.test(e.message) ? '잠시 후 다시 시도해 주세요.'
   : e.message;
+// 로그인 / 가입 전환
+let pwMode = 'login';
+function setPwMode(mode) {
+  pwMode = mode;
+  const signup = mode === 'signup';
+  $('loginTitle').textContent = signup ? '조종사 등록' : '조종사 로그인';
+  $('pwSubmit').textContent = signup ? '가입하기' : '로그인';
+  $('pwSwitchText').textContent = signup ? '이미 계정이 있나요?' : '처음이신가요?';
+  $('pwSwitch').textContent = signup ? '로그인' : '이메일로 가입하기';
+  $('pwPass').autocomplete = signup ? 'new-password' : 'current-password';
+  $('loginErr').hidden = true; $('loginInfo').hidden = true;
+}
+$('pwSwitch').addEventListener('click', () => setPwMode(pwMode === 'login' ? 'signup' : 'login'));
 $('pwForm').addEventListener('submit', async e => {
   e.preventDefault();
   const v = pwValues(); if (!v) return;
-  loginInfo('');
-  const { error } = await sb.auth.signInWithPassword(v);
-  if (error) loginError(authMsg(error));
-});
-$('pwSignup').addEventListener('click', async () => {
-  const v = pwValues(); if (!v) return;
-  loginInfo('');
-  const { data, error } = await sb.auth.signUp({ ...v, options: { emailRedirectTo: location.origin + location.pathname } });
-  if (error) return loginError(authMsg(error));
-  if (!data.session) loginInfo('가입했습니다. 메일함의 인증 링크를 누른 뒤 로그인하세요.');
+  loginInfo(''); $('loginErr').hidden = true;
+  const btn = $('pwSubmit'); btn.disabled = true;
+  try {
+    if (pwMode === 'login') {
+      const { error } = await sb.auth.signInWithPassword(v);
+      if (error) loginError(authMsg(error));
+    } else {
+      const { data, error } = await sb.auth.signUp({ ...v, options: { emailRedirectTo: location.origin + location.pathname } });
+      if (error) loginError(authMsg(error));
+      else if (!data.session) loginInfo('가입했습니다. 메일함의 인증 링크를 누른 뒤 로그인하세요.');
+    }
+  } finally { btn.disabled = false; }
 });
 
 const oauth = provider => sb.auth.signInWithOAuth({ provider, options: { redirectTo: location.origin + location.pathname } });
-$('loginBtn').addEventListener('click', () => { $('loginBox').hidden = !$('loginBox').hidden; });
+$('loginBtn').addEventListener('click', () => { setPwMode('login'); openLogin(); });
+$('loginClose').addEventListener('click', () => $('loginBox').close());
+$('loginBox').addEventListener('click', e => { if (e.target === $('loginBox')) $('loginBox').close(); });   // 바깥 클릭 시 닫기
 $('login-kakao').addEventListener('click', () => oauth('kakao'));
 $('login-google').addEventListener('click', () => oauth('google'));
 $('login-apple').addEventListener('click', () => oauth('apple'));

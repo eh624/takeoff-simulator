@@ -143,13 +143,36 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 1.25rem; margin: 
 #nickForm { grid-column: 1 / -1; display: flex; gap: 6px; }
 #nickForm input { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--ink); width: 150px; }
 #nickErr { grid-column: 1 / -1; font-size: .8rem; color: var(--stop); }
-.loginbox { padding: 16px 18px; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
-.loginbox p { margin: 0; flex: 1 1 260px; color: var(--muted); font-size: .9rem; }
-.loginbox .btns { display: flex; flex-wrap: wrap; gap: 8px; }
-.pwform { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; }
-.pwform input { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; flex: 1 1 180px; min-width: 0; }
-.loginbox .info { flex-basis: 100%; color: var(--go); font-size: .88rem; }
-.loginbox .err { flex-basis: 100%; color: var(--stop); font-size: .88rem; }
+/* 로그인 창 */
+dialog.login { padding: 0; border: 0; border-radius: 10px; width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; background: var(--panel); color: var(--ink); box-shadow: 0 24px 60px rgba(8, 15, 30, .35); }
+dialog.login::backdrop { background: rgba(10, 18, 34, .55); backdrop-filter: blur(2px); }
+.lhead { background: #15233F; color: #EEF2F8; padding: 18px 22px 20px; position: relative; display: flex; flex-direction: column; gap: 6px; }
+.lhead::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: -1px; border-bottom: 2px dashed var(--line); }
+.ltop { display: flex; align-items: center; gap: 10px; }
+.lsub { font-family: var(--mono); font-size: .72rem; letter-spacing: .14em; color: #9FB0CC; }
+.lclose { margin-left: auto; background: transparent; border: 0; color: #C9D3E6; font-size: 1rem; padding: 4px 8px; }
+.lclose:hover { color: #FFFFFF; }
+.lhead h2 { font-family: var(--display); font-size: 1.9rem; letter-spacing: .02em; margin: 4px 0 0; color: #FFFFFF; }
+.lhead p { margin: 0; font-size: .88rem; color: #B9C5DA; }
+.lbody { padding: 22px; display: flex; flex-direction: column; gap: 16px; }
+.social { display: flex; flex-direction: column; gap: 8px; }
+.sbtn { width: 100%; padding: 12px 44px; font-size: .95rem; border-radius: 6px; border: 1px solid transparent; position: relative; display: flex; align-items: center; justify-content: center; min-height: 46px; }
+.sicon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; object-fit: contain; }
+.sbtn.kakao { background: #FEE500; color: #191919; }
+.sbtn.google { background: #FFFFFF; color: #1F1F1F; border-color: #DADCE0; }
+.sbtn.naver { background: #03C75A; color: #FFFFFF; }
+.sbtn.apple { background: #000000; color: #FFFFFF; }
+.sbtn:hover { filter: brightness(.96); }
+.or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: .8rem; }
+.or::before, .or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+.pwform { display: flex; flex-direction: column; gap: 6px; }
+.pwform label { font-size: .78rem; font-weight: 600; color: var(--muted); letter-spacing: .04em; }
+.pwform input { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 11px 12px; margin-bottom: 6px; }
+.pwform input:focus { border-color: var(--trace); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--trace) 25%, transparent); }
+button.wide { width: 100%; padding: 12px; font-size: .95rem; border-radius: 6px; margin-top: 4px; }
+.switch { margin: 0; text-align: center; font-size: .88rem; color: var(--muted); }
+.login .info { color: var(--go); font-size: .88rem; }
+.login .err { color: var(--stop); font-size: .88rem; }
 .guest { font-size: .82rem; color: var(--muted); }
 .xpresult { border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
 .xphead { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
@@ -191,23 +214,33 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 1.25rem; margin: 
     </div>
   </header>
 
-  <div class="card loginbox" id="loginBox" hidden>
-    <p>로그인하면 이륙할 때마다 경험치가 쌓이고 순위표에 이름이 올라갑니다.</p>
-    <form class="pwform" id="pwForm" novalidate>
-      <input type="email" id="pwEmail" placeholder="이메일" autocomplete="email" aria-label="이메일" required>
-      <input type="password" id="pwPass" placeholder="비밀번호 (6자 이상)" autocomplete="current-password" aria-label="비밀번호" minlength="6" required>
-      <button type="submit" class="primary" id="pwLogin">로그인</button>
-      <button type="button" id="pwSignup">처음이면 가입</button>
-    </form>
-    <div class="btns">
-      <button type="button" id="login-kakao">카카오로 계속</button>
-      <button type="button" id="login-google">Google로 계속</button>
-      <button type="button" id="login-naver">네이버로 계속</button>
-      <button type="button" id="login-apple">Apple로 계속</button>
+  <dialog class="login" id="loginBox" aria-labelledby="loginTitle">
+    <div class="lhead">
+      <div class="ltop"><span class="badge">RWY</span><span class="lsub">BOARDING · PILOT</span>
+        <button type="button" class="lclose" id="loginClose" aria-label="닫기">✕</button></div>
+      <h2 id="loginTitle">조종사 로그인</h2>
+      <p>로그인하면 이륙할 때마다 경험치가 쌓이고 순위표에 이름이 올라갑니다.</p>
     </div>
-    <div class="info" id="loginInfo" hidden></div>
-    <div class="err" id="loginErr" hidden></div>
-  </div>
+    <div class="lbody">
+      <div class="social" id="social">
+        <button type="button" class="sbtn kakao" id="login-kakao"><img class="sicon" src="./icons/kakao.png" alt="" onerror="this.remove()">카카오로 계속하기</button>
+        <button type="button" class="sbtn google" id="login-google"><img class="sicon" src="./icons/google.png" alt="" onerror="this.remove()">Google로 계속하기</button>
+        <button type="button" class="sbtn naver" id="login-naver">네이버로 계속하기</button>
+        <button type="button" class="sbtn apple" id="login-apple">Apple로 계속하기</button>
+      </div>
+      <div class="or" id="loginOr"><span>또는 이메일로</span></div>
+      <form id="pwForm" class="pwform" novalidate>
+        <label for="pwEmail">이메일</label>
+        <input type="email" id="pwEmail" placeholder="pilot@example.com" autocomplete="email" required>
+        <label for="pwPass">비밀번호</label>
+        <input type="password" id="pwPass" placeholder="6자 이상" autocomplete="current-password" minlength="6" required>
+        <div class="info" id="loginInfo" hidden></div>
+        <div class="err" id="loginErr" role="alert" hidden></div>
+        <button type="submit" class="primary wide" id="pwSubmit">로그인</button>
+      </form>
+      <p class="switch"><span id="pwSwitchText">처음이신가요?</span> <button type="button" class="linkbtn" id="pwSwitch">이메일로 가입하기</button></p>
+    </div>
+  </dialog>
 
   <div class="grid">
     <form class="card controls" id="form" autocomplete="off">

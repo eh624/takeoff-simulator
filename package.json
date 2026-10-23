@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler pages dev public --compatibility-date=2024-09-23",
-    "deploy": "wrangler pages deploy public --project-name takeoff-simulator"
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
   },
   "devDependencies": {
-    "wrangler": "^3.80.0"
+    "wrangler": "^4.20.0"
   }
 }
