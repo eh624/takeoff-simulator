@@ -11,6 +11,7 @@
     "SUPABASE_URL": "https://ojmrfifogkrbdkjjnoua.supabase.co",
     "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qbXJmaWZvZ2tyYmRrampub3VhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI3MTU4NzgsImV4cCI6MjEwODI5MTg3OH0.GRBY8rtFClfhfKBfS7VH-ElbKo9WLcwSOud9kPZYWm0",
     "ENABLE_KAKAO": "true",
-    "ENABLE_GOOGLE": "true"
+    "ENABLE_GOOGLE": "true",
+    "ENABLE_APPLE" : "false"
   }
 }
