@@ -1,0 +1,11 @@
+{
+  // Cloudflare Workers 배포 설정. name은 Cloudflare 대시보드의 Worker 이름과 같아야 함
+  "name": "takeoff-simulator",
+  "main": "worker.js",
+  "compatibility_date": "2024-09-23",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "observability": { "enabled": true }
+}
