@@ -85,9 +85,11 @@ input[type=range] { width: 100%; accent-color: var(--trace); }
 .seg label:first-of-type { border-left: 0; }
 .seg input:checked + label { background: var(--ink); color: var(--panel); font-weight: 600; }
 .seg input:focus-visible + label { outline: 2px solid var(--trace); outline-offset: -2px; }
-.windrow { display: grid; grid-template-columns: 1fr 84px; gap: 12px; align-items: center; }
-.windrow .field { gap: 4px; }
-#dial { width: 84px; height: 84px; }
+.windfig { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+#dial { width: 100%; height: auto; display: block; }
+.windfig figcaption { font-size: .74rem; color: var(--muted); }
+#dial text { font-family: var(--mono); }
+#dial .lbl { font-family: var(--body); }
 .warnline { font-size: .82rem; color: var(--stop); font-weight: 500; }
 
 .stage { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
@@ -313,6 +315,68 @@ button.wide { width: 100%; padding: 12px; font-size: .95rem; border-radius: 6px;
         <div class="err" id="loginErr" role="alert" hidden></div>
         <button type="submit" class="primary wide" id="pwSubmit">로그인</button>
       </form>
+      <p class="switch"><span id="pwSwitchText">처음이신가요?</span> <button type="button" class="linkbtn" id="pwSwitch">이메일로 가입하기</button></p>
+    </div>
+  </dialog>
+
+  <dialog class="login" id="nickDlg" aria-labelledby="nickTitle">
+    <div class="lhead">
+      <div class="ltop"><span class="badge">RWY</span><span class="lsub">CALLSIGN</span></div>
+      <h2 id="nickTitle">조종사 아이디 정하기</h2>
+      <p>순위표와 프로필에 표시되는 이름입니다. 다른 조종사와 겹칠 수 없어요.</p>
+    </div>
+    <div class="lbody">
+      <form id="nickForm" class="pwform" novalidate>
+        <label for="nick">아이디</label>
+        <input id="nick" maxlength="12" autocomplete="nickname" placeholder="예: 활주로킹, Ace_Pilot7" required>
+        <p class="nickrule">한글·영문·숫자·밑줄(_) 2~12자</p>
+        <div class="err" id="nickErr" role="alert" hidden></div>
+        <div class="lactions">
+          <button type="button" id="nickCancel">취소</button>
+          <button type="submit" class="primary" id="nickSave">저장</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <div class="grid">
+    <form class="card controls" id="form" autocomplete="off">
+      <div class="field">
+        <label for="ac">기종</label>
+        <select id="ac"></select>
+        <div class="spec" id="acSpec"></div>
+      </div>
+      <div class="field">
+        <label for="ap">출발 공항</label>
+        <select id="ap"></select>
+        <div class="spec" id="apSpec"></div>
+      </div>
+      <div class="field">
+        <div class="lrow"><label for="mass">이륙 중량</label><span class="numwrap"><input type="number" id="massNum" inputmode="decimal" aria-label="이륙 중량 (t)"><span class="unit">t</span></span></div>
+        <input type="range" id="mass" step="0.1">
+        <div class="warnline" id="massWarn" hidden></div>
+      </div>
+      <div class="field">
+        <span class="legend">활주로 상태</span>
+        <div class="seg" id="rwy"></div>
+      </div>
+      <div class="field">
+        <div class="lrow"><label for="oat">기온</label><span class="numwrap"><input type="number" id="oatNum" inputmode="decimal" aria-label="기온 (°C)"><span class="unit">°C</span></span></div>
+        <input type="range" id="oat" min="-30" max="45" step="1" value="15">
+      </div>
+      <div class="field">
+        <div class="lrow"><label for="wind">풍속</label><output id="windOut" class="hintout"></output><span class="numwrap"><input type="number" id="windNum" inputmode="decimal" aria-label="풍속 (m/s)"><span class="unit">m/s</span></span></div>
+        <input type="range" id="wind" min="0" max="25" step="0.1" value="5">
+      </div>
+      <div class="field">
+        <div class="lrow"><label for="wdir">풍향</label><output id="wdirOut" class="hintout"></output><span class="numwrap"><input type="number" id="wdirNum" inputmode="decimal" aria-label="풍향 (°)"><span class="unit">°</span></span></div>
+        <input type="range" id="wdir" min="0" max="359" step="1" value="0">
+      </div>
+      <figure class="windfig">
+        <svg id="dial" viewBox="0 0 280 168" role="img" aria-label="이륙 방향과 바람"></svg>
+        <figcaption>풍향은 이륙 방향 기준 바람이 불어오는 쪽 (0° 정면 · 90° 오른쪽 · 180° 뒤 · 270° 왼쪽)</figcaption>
+      </figure>
+    </form>
       <p class="switch"><span id="pwSwitchText">처음이신가요?</span> <button type="button" class="linkbtn" id="pwSwitch">이메일로 가입하기</button></p>
     </div>
   </dialog>

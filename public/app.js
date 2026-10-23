@@ -41,21 +41,57 @@ function readInputs() {
   };
 }
 
-function drawDial(dirDeg, xwBad) {
-  const r = (dirDeg - 90) * Math.PI / 180;
-  // 바람이 불어오는 쪽(0° = 기수 정면)에 화살표 꼬리
-  const cx = 42, cy = 42, R = 34;
-  const tx = cx + Math.cos(r) * R, ty = cy + Math.sin(r) * R;
-  const hx = cx + Math.cos(r) * 12, hy = cy + Math.sin(r) * 12;
-  const ang = Math.atan2(hy - ty, hx - tx);
-  const a1 = ang + 2.6, a2 = ang - 2.6;
+// 이륙 방향과 바람: 왼쪽은 활주로와 바람 화살표, 오른쪽은 정풍·측풍 성분
+function drawDial() {
+  if (!R) return;
+  const d = +$('wdir').value, spd = +$('wind').value;
+  const bad = R.xwBlocked, windCol = bad ? 'var(--stop)' : 'var(--trace)';
+  const cx = 92, cy = 84, Rr = 64;
+  const rad = (d - 90) * Math.PI / 180;           // 0° = 위(기수 방향)
+  const arrow = (x1, y1, x2, y2, col, w) => {
+    const ang = Math.atan2(y2 - y1, x2 - x1), L = Math.hypot(x2 - x1, y2 - y1);
+    if (L < 4) return '';
+    const h = Math.min(9, L * 0.5);
+    return `<line x1="${x1}" y1="${y1}" x2="${x2 - Math.cos(ang) * h * 0.6}" y2="${y2 - Math.sin(ang) * h * 0.6}" stroke="${col}" stroke-width="${w}" stroke-linecap="round"/>
+      <path d="M${x2} ${y2} L${x2 - Math.cos(ang - 0.45) * h} ${y2 - Math.sin(ang - 0.45) * h} L${x2 - Math.cos(ang + 0.45) * h} ${y2 - Math.sin(ang + 0.45) * h}Z" fill="${col}"/>`;
+  };
+  // 바람 화살표: 불어오는 쪽(원 둘레)에서 중심으로
+  const tail = [cx + Math.cos(rad) * (Rr - 2), cy + Math.sin(rad) * (Rr - 2)];
+  const head = [cx + Math.cos(rad) * 18, cy + Math.sin(rad) * 18];
+  const ticks = [0, 90, 180, 270].map(t => {
+    const a = (t - 90) * Math.PI / 180;
+    return `<text x="${cx + Math.cos(a) * (Rr + 9)}" y="${cy + Math.sin(a) * (Rr + 9) + 3}" text-anchor="middle" font-size="8" fill="var(--muted)">${t}°</text>`;
+  }).join('');
+  // 성분 (kt)
+  const head_kt = R.Vw * KT, cross_kt = R.xw * KT;
+  const crossSide = Math.sin(d * Math.PI / 180) >= 0 ? '오른쪽' : '왼쪽';
+  const hwLabel = Math.abs(head_kt) < 0.5 ? '정풍 0 kt' : head_kt > 0 ? `정풍 ${fmt(head_kt)} kt` : `배풍 ${fmt(-head_kt)} kt`;
+  const hwCol = head_kt < -0.5 ? 'var(--warn)' : 'var(--go)';
+  const xwRatio = Math.min(1, R.xw / R.rw.xw);
+  // 오른쪽 성분 그림
+  const bx = 220, by = 70, sc = 2.2;                  // 1 kt = 2.2 px (최대 25 kt 근처)
+  const hLen = Math.max(-34, Math.min(34, head_kt * sc)), xLen = Math.max(-34, Math.min(34, cross_kt * sc * (crossSide === '오른쪽' ? 1 : -1)));
   $('dial').innerHTML = `
-    <circle cx="42" cy="42" r="38" fill="none" stroke="var(--line)" stroke-width="1.5"/>
-    <rect x="37" y="14" width="10" height="56" rx="1" fill="var(--runway)"/>
-    <line x1="42" y1="18" x2="42" y2="66" stroke="var(--plane)" stroke-width="1" stroke-dasharray="4 4"/>
-    <path d="M42 8 l-4 6 h8z" fill="var(--muted)"/>
-    <line x1="${tx}" y1="${ty}" x2="${hx}" y2="${hy}" stroke="${xwBad ? 'var(--stop)' : 'var(--trace)'}" stroke-width="3" stroke-linecap="round"/>
-    <path d="M${hx} ${hy} L${hx + Math.cos(a1) * 8} ${hy + Math.sin(a1) * 8} L${hx + Math.cos(a2) * 8} ${hy + Math.sin(a2) * 8}Z" fill="${xwBad ? 'var(--stop)' : 'var(--trace)'}"/>`;
+    <circle cx="${cx}" cy="${cy}" r="${Rr}" fill="var(--bg)" stroke="var(--line)" stroke-width="1.2"/>
+    ${ticks}
+    <rect x="${cx - 9}" y="${cy - 54}" width="18" height="108" rx="2" fill="var(--runway)"/>
+    <line x1="${cx}" y1="${cy - 46}" x2="${cx}" y2="${cy + 48}" stroke="var(--plane)" stroke-width="1.2" stroke-dasharray="6 5"/>
+    <g transform="translate(${cx} ${cy + 26})" fill="var(--plane)" stroke="var(--ink)" stroke-width="0.8">
+      <path d="M0 -15 C2 -15 2.5 -11 2.5 -8 L2.5 -3 L13 3 L13 6 L2.5 3 L2 10 L6 13 L6 15 L0 13.5 L-6 15 L-6 13 L-2 10 L-2.5 3 L-13 6 L-13 3 L-2.5 -3 L-2.5 -8 C-2.5 -11 -2 -15 0 -15Z"/>
+    </g>
+    ${arrow(cx, cy - 2, cx, cy - 44, 'var(--sign)', 2.5)}
+    <text x="${cx + 15}" y="${cy + 30}" font-size="9" class="lbl" font-weight="700" fill="var(--ink)">이륙 방향 ↑</text>
+    ${spd > 0 ? arrow(tail[0], tail[1], head[0], head[1], windCol, 3.5) : ''}
+    <text x="${bx}" y="14" text-anchor="middle" font-size="10" class="lbl" font-weight="700" fill="var(--ink)">바람 성분</text>
+    <rect x="${bx - 38}" y="${by - 38}" width="76" height="76" rx="6" fill="none" stroke="var(--line)" stroke-dasharray="3 3"/>
+    <line x1="${bx}" y1="${by - 36}" x2="${bx}" y2="${by + 36}" stroke="var(--line)"/>
+    <line x1="${bx - 36}" y1="${by}" x2="${bx + 36}" y2="${by}" stroke="var(--line)"/>
+    ${arrow(bx, by - hLen, bx, by, hwCol, 3)}
+    ${arrow(bx + xLen, by, bx, by, xwRatio >= 1 ? 'var(--stop)' : 'var(--warn)', 3)}
+    <circle cx="${bx}" cy="${by}" r="2.5" fill="var(--ink)"/>
+    <text x="${bx}" y="${by + 54}" text-anchor="middle" font-size="10" fill="${hwCol}">${hwLabel}</text>
+    <text x="${bx}" y="${by + 68}" text-anchor="middle" font-size="10" fill="${xwRatio >= 1 ? 'var(--stop)' : 'var(--ink)'}">측풍 ${fmt(cross_kt)} kt${cross_kt >= 0.5 ? ` (${crossSide})` : ''}</text>
+    <text x="${bx}" y="${by + 82}" text-anchor="middle" font-size="9" fill="var(--muted)">측풍 한계의 ${Math.round(xwRatio * 100)}%</text>`;
 }
 
 // ===== 캔버스 =====
@@ -451,7 +487,7 @@ function recompute() {
   syncLabels();
   R = compute(readInputs());
   if (!baseR) baseR = R;
-  drawDial(+$('wdir').value, R.xwBlocked);
+  drawDial();
   stopAnim();
   showResults();
   $('msg').textContent = '';
@@ -611,7 +647,7 @@ $('form').addEventListener('submit', e => e.preventDefault());
 
 // 테마·크기 변화 대응
 readColors();
-const onTheme = () => { readColors(); drawDial(+$('wdir').value, R && R.xwBlocked); render(); };
+const onTheme = () => { readColors(); drawDial(); render(); };
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', onTheme);
 new MutationObserver(onTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 new ResizeObserver(() => R && render()).observe($('scene'));
