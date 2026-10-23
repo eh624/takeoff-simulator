@@ -140,9 +140,9 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 1.25rem; margin: 
 .xpbar { grid-column: 1 / -1; width: 220px; max-width: 100%; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
 .xpbar i { display: block; height: 100%; background: var(--trace); transition: width .6s ease; }
 .xptext { grid-column: 1 / -1; font-family: var(--mono); font-size: .78rem; color: var(--muted); }
-#nickForm { grid-column: 1 / -1; display: flex; gap: 6px; }
-#nickForm input { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--ink); width: 150px; }
-#nickErr { grid-column: 1 / -1; font-size: .8rem; color: var(--stop); }
+.nickrule { margin: 0; font-size: .8rem; color: var(--muted); }
+.lactions { display: flex; gap: 8px; }
+.lactions button { flex: 1; padding: 12px; border-radius: 6px; font-size: .95rem; }
 /* 로그인 창 */
 dialog.login { padding: 0; border: 0; border-radius: 10px; width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; background: var(--panel); color: var(--ink); box-shadow: 0 24px 60px rgba(8, 15, 30, .35); }
 dialog.login::backdrop { background: rgba(10, 18, 34, .55); backdrop-filter: blur(2px); }
@@ -208,8 +208,6 @@ button.wide { width: 100%; padding: 12px; font-size: .95rem; border-radius: 6px;
         <button type="button" class="linkbtn small" id="logoutBtn">로그아웃</button>
         <div class="xpbar" aria-hidden="true"><i id="meBar"></i></div>
         <span class="xptext" id="meXp"></span>
-        <form id="nickForm" hidden><input id="nick" maxlength="20" aria-label="새 이름"><button type="submit">저장</button></form>
-        <span id="nickErr" aria-live="polite"></span>
       </div>
     </div>
   </header>
@@ -239,6 +237,26 @@ button.wide { width: 100%; padding: 12px; font-size: .95rem; border-radius: 6px;
         <button type="submit" class="primary wide" id="pwSubmit">로그인</button>
       </form>
       <p class="switch"><span id="pwSwitchText">처음이신가요?</span> <button type="button" class="linkbtn" id="pwSwitch">이메일로 가입하기</button></p>
+    </div>
+  </dialog>
+
+  <dialog class="login" id="nickDlg" aria-labelledby="nickTitle">
+    <div class="lhead">
+      <div class="ltop"><span class="badge">RWY</span><span class="lsub">CALLSIGN</span></div>
+      <h2 id="nickTitle">조종사 아이디 정하기</h2>
+      <p>순위표와 프로필에 표시되는 이름입니다. 다른 조종사와 겹칠 수 없어요.</p>
+    </div>
+    <div class="lbody">
+      <form id="nickForm" class="pwform" novalidate>
+        <label for="nick">아이디</label>
+        <input id="nick" maxlength="12" autocomplete="nickname" placeholder="예: 활주로킹, Ace_Pilot7" required>
+        <p class="nickrule">한글·영문·숫자·밑줄(_) 2~12자</p>
+        <div class="err" id="nickErr" role="alert" hidden></div>
+        <div class="lactions">
+          <button type="button" id="nickCancel">취소</button>
+          <button type="submit" class="primary" id="nickSave">저장</button>
+        </div>
+      </form>
     </div>
   </dialog>
 

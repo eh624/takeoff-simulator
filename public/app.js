@@ -505,9 +505,10 @@ const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;'
 
 async function loadProfile() {
   if (!session) { profile = null; return renderAccount(); }
-  const { data } = await sb.from('profiles').select('nickname, xp, level, flights').eq('id', session.user.id).maybeSingle();
+  const { data } = await sb.from('profiles').select('nickname, nickname_set, xp, level, flights').eq('id', session.user.id).maybeSingle();
   profile = data;
   renderAccount();
+  if (profile && !profile.nickname_set && !nickSkipped) openNick(true);   // 첫 로그인: 아이디 정하기
 }
 
 function renderAccount() {
@@ -619,18 +620,35 @@ $('login-google').addEventListener('click', () => oauth('google'));
 $('login-apple').addEventListener('click', () => oauth('apple'));
 $('login-naver').addEventListener('click', () => { location.href = '/auth/naver/login'; });
 $('logoutBtn').addEventListener('click', async () => { await sb.auth.signOut(); session = null; profile = null; renderAccount(); });
-$('nickBtn').addEventListener('click', () => {
-  $('nickForm').hidden = !$('nickForm').hidden;
-  $('nick').value = profile?.nickname ?? '';
-  if (!$('nickForm').hidden) $('nick').focus();
-});
+// ===== 조종사 아이디 =====
+const NICK_RE = /^[가-힣A-Za-z0-9_]{2,12}$/;
+let nickRequired = false, nickSkipped = false;
+function openNick(required) {
+  const d = $('nickDlg');
+  nickRequired = required;
+  $('nickTitle').textContent = required ? '조종사 아이디 정하기' : '아이디 바꾸기';
+  $('nickCancel').textContent = required ? '나중에' : '취소';
+  $('nick').value = profile?.nickname_set ? profile.nickname : '';
+  $('nickErr').hidden = true;
+  if (!d.open) d.showModal();
+  $('nick').focus();
+}
+function nickError(msg) { $('nickErr').textContent = msg; $('nickErr').hidden = false; }
+$('nickBtn').addEventListener('click', () => openNick(false));
+$('nickCancel').addEventListener('click', () => { if (nickRequired) nickSkipped = true; $('nickDlg').close(); });
 $('nickForm').addEventListener('submit', async e => {
   e.preventDefault();
   const name = $('nick').value.trim();
-  if (!name || name.length > 20) { $('nickErr').textContent = '이름은 1~20자로 정해주세요.'; return; }
+  if (!NICK_RE.test(name)) return nickError('한글·영문·숫자·밑줄(_)로 2~12자를 입력하세요.');
+  $('nickSave').disabled = true;
   const { error } = await sb.from('profiles').update({ nickname: name }).eq('id', session.user.id);
-  if (error) { $('nickErr').textContent = '저장하지 못했습니다. 다시 시도하세요.'; return; }
-  $('nickErr').textContent = ''; $('nickForm').hidden = true;
+  $('nickSave').disabled = false;
+  if (error) {
+    if (error.code === '23505') return nickError('이미 다른 조종사가 쓰는 아이디입니다.');
+    if (error.code === '23514') return nickError('한글·영문·숫자·밑줄(_)로 2~12자를 입력하세요.');
+    return nickError('저장하지 못했습니다. 다시 시도하세요.');
+  }
+  $('nickDlg').close();
   await loadProfile(); loadBoard();
 });
 
