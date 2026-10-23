@@ -30,8 +30,9 @@ export const RUNWAY = {
   snow: { label: '눈',     roll: 0.07, brake: 0.20, xw: 6 },
   icy:  { label: '결빙',   roll: 0.01, brake: 0.07, xw: 5 },
 };
-export const P = { CLg: 0.6, CLb: 0.1, dCDsp: 0.03, vr: 1.10, lof: 1.17, v2: 1.20, react: 2.0, safety: 1.15, rev: 0.35, dCDoei: 0.005, flare: 2.0, failProb: 0.03, decideTime: 5, lapse: 0.002, tf: 0.95, dt: 0.02 };
+export const P = { CLg: 0.6, CLb: 0.1, dCDsp: 0.03, vr: 1.10, lof: 1.17, v2: 1.20, react: 2.0, safety: 1.15, rev: 0.35, dCDoei: 0.005, flare: 2.0, failProb: 0.03, decideTime: 5, xwDrag: 0.03, xwRoll: 0.6, xwBrake: 0.35, lapse: 0.002, tf: 0.95, dt: 0.02 };
 export const G = 9.81, KT = 1.943844;
+export const TAILWIND_LIMIT_KT = 15;   // 대부분 여객기의 이륙 배풍 한계
 
 // ===== 물리 모델 =====
 export function density(altFt, oatC) {
@@ -40,7 +41,7 @@ export function density(altFt, oatC) {
   return p / (287.05 * (oatC + 273.15));
 }
 
-export function compute(inp) {
+export function compute(inp, { ignoreCrosswind = false } = {}) {
   const ac = AIRCRAFT.find(a => a.id === inp.ac);
   const ap = AIRPORTS.find(a => a.code === inp.ap);
   const rw = RUNWAY[inp.rwy];
@@ -54,8 +55,15 @@ export function compute(inp) {
   // nOn: 작동 중인 엔진 수
   const thrust = (Va, nOn) => T0 * (nOn / ac.n) * Math.max(0.4, 1 - P.lapse * Va);
   const k = 1 / (Math.PI * ac.e * ac.ar);
-  const CDg = ac.cd0 + k * P.CLg ** 2;
-  const CDb = ac.cd0 + P.dCDsp + k * P.CLb ** 2;
+  // 측풍 불이익: 한계 대비 비율 r (0~1)
+  //  - 러더·에일러론을 바람 쪽으로 쓰고 기체가 옆으로 미끄러지며 항력 증가
+  //  - 타이어가 옆으로 버티느라 구름 저항 증가, 제동에 쓸 마찰이 줄어듦
+  const xr = ignoreCrosswind ? 0 : Math.min(1, xw / rw.xw);
+  const dCDxw = P.xwDrag * xr * xr;
+  const rollMu = rw.roll * (1 + P.xwRoll * xr);
+  const brakeMu = rw.brake * (1 - P.xwBrake * xr * xr);
+  const CDg = ac.cd0 + k * P.CLg ** 2 + dCDxw;
+  const CDb = ac.cd0 + P.dCDsp + k * P.CLb ** 2 + dCDxw;
   const qS = Va => 0.5 * rho * ac.S * Va * Math.abs(Va); // 부호 있는 동압×면적
   const Vs = Math.sqrt(2 * W / (rho * ac.S * ac.clmax));
   const Vr = Vs * P.vr, Vlof = Vs * P.lof, V2 = Vs * P.v2;
@@ -70,7 +78,7 @@ export function compute(inp) {
       const Va = V + Vw;
       const L = 0.5 * rho * ac.S * P.CLg * Va * Va;
       const N = Math.max(W - L, 0);
-      const a = (thrust(Va, nOn) - qS(Va) * cd - rw.roll * N) / m;
+      const a = (thrust(Va, nOn) - qS(Va) * cd - rollMu * N) / m;
       if (a <= 0.005) { result = 'nothrust'; break; }
       V += a * dt; x += V * dt; t += dt;
       pts.push({ t, V, x });
@@ -90,7 +98,7 @@ export function compute(inp) {
       const Va = V + Vw;
       const L = 0.5 * rho * ac.S * P.CLb * Va * Va;
       const N = Math.max(W - L, 0);
-      const dec = ((rw.roll + rw.brake) * N + T0 * P.rev * (nOn / ac.n) + qS(Va) * CDb) / m;
+      const dec = ((rollMu + brakeMu) * N + T0 * P.rev * (nOn / ac.n) + qS(Va) * CDb) / m;
       V = Math.max(0, V - dec * dt); x += V * dt; t += dt;
       pts.push({ t, V, x });
     }
@@ -132,9 +140,12 @@ export function compute(inp) {
 
   // 판정
   let status, text;
-  const xwBlocked = xw > rw.xw;
+  const tw = Math.max(0, -Vw);                                // 배풍 성분 m/s
+  const twBlocked = tw * KT > TAILWIND_LIMIT_KT;
+  const xwBlocked = xw > rw.xw || twBlocked;                    // 바람 때문에 이륙 금지
   const over = inp.mass * 1000 > ac.mtow;
-  if (xwBlocked) { status = 'no'; text = `측풍 ${xw.toFixed(1)} m/s가 ${rw.label} 활주로 한계 ${rw.xw} m/s를 넘습니다. 이륙 금지.`; }
+  if (twBlocked) { status = 'no'; text = `배풍 ${fmt(tw * KT)} kt가 한계 ${TAILWIND_LIMIT_KT} kt를 넘습니다. 이륙 금지.`; }
+  else if (xwBlocked) { status = 'no'; text = `측풍 ${xw.toFixed(1)} m/s가 ${rw.label} 활주로 한계 ${rw.xw} m/s를 넘습니다. 이륙 금지.`; }
   else if (result === 'nothrust') { status = 'no'; text = '순추력이 부족해 부양 속도까지 가속하지 못합니다. 중량을 줄이거나 다른 공항을 고르세요.'; }
   else if (result === 'overrun' || xLof > ap.tora) { status = 'no'; text = '부양 속도에 도달하기 전에 활주로가 끝납니다. 이륙 불가.'; }
   else if (over) { status = 'no'; text = `최대 이륙 중량(${(ac.mtow / 1000).toFixed(1)} t)을 ${((inp.mass * 1000 - ac.mtow) / 1000).toFixed(1)} t 초과했습니다. 계산상 활주는 가능하지만 이륙할 수 없는 중량입니다.`; }
@@ -142,8 +153,20 @@ export function compute(inp) {
   else if (gradOEI < gradMin) { status = 'warn'; text = `엔진 1개 고장 시 상승 기울기 ${gradOEI.toFixed(1)}%로 규정 최소 ${gradMin}%보다 낮습니다. 중량을 줄이세요.`; }
   else { status = 'go'; text = `35 ft 통과 거리에 안전 마진 15%를 넣어도 활주로가 ${fmt(ap.tora - tod * P.safety)} m 남습니다.`; }
 
-  return { ac, ap, rw, inp, rho, Vw, xw, Vs, Vr, Vlof, V2, V1, path, result, xLof, tod, gammaAEO, gradOEI, gradMin,
-    v1Idx, v1AtVr, vrIdx, rollFrom, stopFrom, climbAngle, status, text, xwBlocked };
+  // 측풍이 없었을 때와 비교 (화면 표시용)
+  let xwEffect = null;
+  if (xr > 0.05 && !ignoreCrosswind) {
+    const base = compute(inp, { ignoreCrosswind: true });
+    xwEffect = {
+      ratio: xr,
+      lofPlus: result === 'liftoff' && base.result === 'liftoff' ? xLof - base.xLof : null,
+      brakeLoss: P.xwBrake * xr * xr,
+      v1Minus: V1 != null && base.V1 != null ? base.V1 - V1 : null,
+    };
+  }
+
+  return { ac, ap, rw, inp, rho, xwEffect, Vw, xw, Vs, Vr, Vlof, V2, V1, path, result, xLof, tod, gammaAEO, gradOEI, gradMin,
+    v1Idx, v1AtVr, vrIdx, rollFrom, stopFrom, climbAngle, status, text, xwBlocked, twBlocked };
 }
 
 
@@ -203,6 +226,7 @@ export function evaluateFlight(R, { failVa = null, decision = null, abortIdx = n
 // 경험치 계산: [항목, 점수] 목록과 합계
 export function flightXp(R, ev) {
   const zero = reason => ({ xp: 0, items: [[reason, 0]] });
+  if (R.twBlocked) return zero(`배풍 한계(${TAILWIND_LIMIT_KT} kt) 초과`);
   if (R.xwBlocked) return zero('측풍 한계 초과');
   if (R.inp.mass * 1000 > R.ac.mtow) return zero('최대 이륙 중량 초과 (규정 위반)');
   if (!ev.safe) return zero(ev.kind === 'fail-go' || ev.kind === 'normal' ? '이륙 실패' : '활주로 이탈');
@@ -212,8 +236,18 @@ export function flightXp(R, ev) {
   if (heavy > 0) items.push(['무거운 중량', heavy]);
   const rwyBonus = { wet: 5, snow: 10, icy: 15 }[R.inp.rwy];
   if (rwyBonus) items.push([`${R.rw.label} 활주로`, rwyBonus]);
-  if (R.Vw < -0.5) items.push(['배풍', 5]);
-  if (R.xw > R.rw.xw * 0.5) items.push(['강한 측풍', 5]);
+  // 바람 가중치: 셀수록 많이 (정풍은 이륙을 돕기 때문에 보너스 없음)
+  // 바람은 세기가 아니라 활주로 기준 성분과 한계 대비 비율로 계산
+  // 측풍: 한계에 가까울수록 급격히 어려워짐 → 비율^1.5 × 30 (최대 30)
+  const xwRatio = Math.min(1, R.xw / R.rw.xw);
+  const xwXp = Math.round(Math.pow(xwRatio, 1.5) * 30);
+  if (xwXp >= 2) items.push([`측풍 ${fmt(R.xw * KT)} kt (한계의 ${Math.round(xwRatio * 100)}%)`, xwXp]);
+  // 배풍: 한계(15 kt) 대비 비율 × 15 (최대 15)
+  const twKt = Math.max(0, -R.Vw) * KT;
+  const twXp = Math.round(Math.min(1, twKt / TAILWIND_LIMIT_KT) * 15);
+  if (twXp >= 1) items.push([`배풍 ${fmt(twKt)} kt (한계의 ${Math.round(twKt / TAILWIND_LIMIT_KT * 100)}%)`, twXp]);
+  // 측풍 + 배풍이 함께 있으면 추가
+  if (xwRatio >= 0.5 && twKt / TAILWIND_LIMIT_KT >= 0.5) items.push(['측풍 + 배풍 복합', 10]);
   if (R.ap.alt > 3000) items.push(['고지대 공항', 10]);
   if (R.status === 'warn') items.push(['여유 부족 조건', 10]);
   if (ev.kind === 'fail-stop' || ev.kind === 'fail-go') items.push(ev.correct ? ['엔진 고장 정석 대응', 30] : ['엔진 고장 생존 (원칙과 다른 판단)', 5]);
