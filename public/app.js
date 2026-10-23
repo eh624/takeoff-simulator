@@ -558,11 +558,39 @@ async function initAuth() {
   sb.auth.onAuthStateChange((_e, s) => {
     const changed = (s?.user?.id) !== (session?.user?.id);
     session = s;
-    if (changed) loadProfile();
+    if (changed) { loadProfile(); if (s) $('pwPass').value = ''; }
   });
   await loadProfile();
   loadBoard();
 }
+
+// 이메일 + 비밀번호
+function loginInfo(msg) { const e = $('loginInfo'); e.textContent = msg; e.hidden = !msg; if (msg) $('loginErr').hidden = true; }
+function pwValues() {
+  const email = $('pwEmail').value.trim(), password = $('pwPass').value;
+  if (!/^\S+@\S+\.\S+$/.test(email)) { loginError('이메일 주소를 확인해 주세요.'); return null; }
+  if (password.length < 6) { loginError('비밀번호는 6자 이상이어야 합니다.'); return null; }
+  return { email, password };
+}
+const authMsg = e => /invalid login/i.test(e.message) ? '이메일 또는 비밀번호가 맞지 않습니다.'
+  : /not confirmed/i.test(e.message) ? '이메일 인증을 아직 마치지 않았습니다. 메일함을 확인하세요.'
+  : /already registered|already been registered/i.test(e.message) ? '이미 가입된 이메일입니다. 로그인을 눌러 주세요.'
+  : /rate limit/i.test(e.message) ? '잠시 후 다시 시도해 주세요.'
+  : e.message;
+$('pwForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const v = pwValues(); if (!v) return;
+  loginInfo('');
+  const { error } = await sb.auth.signInWithPassword(v);
+  if (error) loginError(authMsg(error));
+});
+$('pwSignup').addEventListener('click', async () => {
+  const v = pwValues(); if (!v) return;
+  loginInfo('');
+  const { data, error } = await sb.auth.signUp({ ...v, options: { emailRedirectTo: location.origin + location.pathname } });
+  if (error) return loginError(authMsg(error));
+  if (!data.session) loginInfo('가입했습니다. 메일함의 인증 링크를 누른 뒤 로그인하세요.');
+});
 
 const oauth = provider => sb.auth.signInWithOAuth({ provider, options: { redirectTo: location.origin + location.pathname } });
 $('loginBtn').addEventListener('click', () => { $('loginBox').hidden = !$('loginBox').hidden; });

@@ -146,6 +146,9 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 1.25rem; margin: 
 .loginbox { padding: 16px 18px; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
 .loginbox p { margin: 0; flex: 1 1 260px; color: var(--muted); font-size: .9rem; }
 .loginbox .btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.pwform { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; }
+.pwform input { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; flex: 1 1 180px; min-width: 0; }
+.loginbox .info { flex-basis: 100%; color: var(--go); font-size: .88rem; }
 .loginbox .err { flex-basis: 100%; color: var(--stop); font-size: .88rem; }
 .guest { font-size: .82rem; color: var(--muted); }
 .xpresult { border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
@@ -190,11 +193,18 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 1.25rem; margin: 
 
   <div class="card loginbox" id="loginBox" hidden>
     <p>로그인하면 이륙할 때마다 경험치가 쌓이고 순위표에 이름이 올라갑니다.</p>
+    <form class="pwform" id="pwForm" novalidate>
+      <input type="email" id="pwEmail" placeholder="이메일" autocomplete="email" aria-label="이메일" required>
+      <input type="password" id="pwPass" placeholder="비밀번호 (6자 이상)" autocomplete="current-password" aria-label="비밀번호" minlength="6" required>
+      <button type="submit" class="primary" id="pwLogin">로그인</button>
+      <button type="button" id="pwSignup">처음이면 가입</button>
+    </form>
     <div class="btns">
       <button type="button" id="login-google">Google로 계속</button>
       <button type="button" id="login-naver">네이버로 계속</button>
       <button type="button" id="login-apple">Apple로 계속</button>
     </div>
+    <div class="info" id="loginInfo" hidden></div>
     <div class="err" id="loginErr" hidden></div>
   </div>
 
