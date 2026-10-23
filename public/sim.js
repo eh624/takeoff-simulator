@@ -5,7 +5,7 @@ export const fmt = (n, d = 0) => n.toLocaleString('ko-KR', { minimumFractionDigi
 export const AIRCRAFT = [
   { id: 'a350', name: 'Airbus A350-900',  mtow: 280000, S: 443,   ar: 9.49, thrust: 374500, n: 2, eng: 'Trent XWB-84', clmax: 2.3, cd0: 0.024, e: 0.8 },
   { id: 'b77w', name: 'Boeing 777-300ER', mtow: 351535, S: 436.8, ar: 8.67, thrust: 513000, n: 2, eng: 'GE90-115B',   clmax: 2.3, cd0: 0.025, e: 0.8 },
-  { id: 'b789', name: 'Boeing 787-9',     mtow: 254011, S: 377,   ar: 9.59, thrust: 320000, n: 2, eng: 'GEnx-1B / Trent 1000', clmax: 2.3, cd0: 0.024, e: 0.8 },
+  { id: 'b789', name: 'Boeing 787-9',     mtow: 254011, S: 377,   ar: 9.59, thrust: 340000, n: 2, eng: 'GEnx-1B / Trent 1000', clmax: 2.3, cd0: 0.024, e: 0.8 },
   { id: 'a388', name: 'Airbus A380-800',  mtow: 575000, S: 845,   ar: 7.53, thrust: 311000, n: 4, eng: 'Trent 970',   clmax: 2.3, cd0: 0.025, e: 0.8 },
   { id: 'b748', name: 'Boeing 747-8',     mtow: 447696, S: 554,   ar: 8.45, thrust: 296000, n: 4, eng: 'GEnx-2B',     clmax: 2.2, cd0: 0.025, e: 0.8 },
   { id: 'a21n', name: 'Airbus A321neo',   mtow: 97000,  S: 122.6, ar: 10.4, thrust: 147000, n: 2, eng: 'LEAP-1A',     clmax: 2.4, cd0: 0.023, e: 0.8 },
@@ -30,7 +30,7 @@ export const RUNWAY = {
   snow: { label: '눈',     roll: 0.07, brake: 0.20, xw: 6 },
   icy:  { label: '결빙',   roll: 0.01, brake: 0.07, xw: 5 },
 };
-export const P = { CLg: 0.6, CLb: 0.1, dCDsp: 0.03, vr: 1.10, lof: 1.17, v2: 1.20, react: 2.0, safety: 1.15, rev: 0.35, dCDoei: 0.005, flare: 2.0, failProb: 0.03, decideTime: 5, xwDrag: 0.03, xwRoll: 0.6, xwBrake: 0.35, lapse: 0.002, tf: 0.95, dt: 0.02 };
+export const P = { CLg: 0.6, CLb: 0.1, dCDsp: 0.03, vr: 1.10, lof: 1.17, v2: 1.20, vclimb: 1.25, react: 2.0, safety: 1.15, rev: 0.35, dCDoei: 0.005, flare: 2.0, failProb: 0.03, decideTime: 5, xwDrag: 0.03, xwRoll: 0.6, xwBrake: 0.35, lapse: 0.002, tf: 0.95, dt: 0.02 };
 export const G = 9.81, KT = 1.943844;
 export const TAILWIND_LIMIT_KT = 15;   // 대부분 여객기의 이륙 배풍 한계
 
@@ -106,11 +106,13 @@ export function compute(inp, { ignoreCrosswind = false } = {}) {
   }
 
   // 부양 후 V2에서의 상승각(rad): sinγ = (추력 − 항력) / 무게
+  // 상승 성능은 V2보다 조금 빠른 상승 속도(1.25 Vs)에서 계산 (실제로도 V2를 올려 상승 기울기를 확보)
   function climbAngle(nOn, gearDown) {
-    const CL = 2 * W / (rho * ac.S * V2 * V2);
+    const Vc = Vs * P.vclimb;
+    const CL = 2 * W / (rho * ac.S * Vc * Vc);
     const cd = ac.cd0 + (gearDown ? 0.015 : 0) + k * CL * CL + (nOn < ac.n ? P.dCDoei : 0);
-    const D = 0.5 * rho * ac.S * V2 * V2 * cd;
-    return Math.asin(Math.max(-0.3, Math.min(0.3, (thrust(V2, nOn) - D) / W)));
+    const D = 0.5 * rho * ac.S * Vc * Vc * cd;
+    return Math.asin(Math.max(-0.3, Math.min(0.3, (thrust(Vc, nOn) - D) / W)));
   }
   const SCREEN = 35 * 0.3048; // 35 ft
   const airTo35 = g => g > 0 ? Vlof * P.flare + SCREEN / Math.tan(g) : Infinity;
@@ -138,6 +140,27 @@ export function compute(inp, { ignoreCrosswind = false } = {}) {
   const gradOEI = Math.tan(climbAngle(ac.n - 1, false)) * 100; // 엔진 1개 고장, 기어 올림 상승 기울기(%)
   const gradMin = ac.n === 2 ? 2.4 : 3.0;
 
+  // 실제 규정의 이륙 필드 길이(TOFL): 아래 셋 중 가장 긴 값이 활주로 안에 들어와야 함
+  //  1) 엔진 정상 35 ft 통과 거리 × 1.15
+  //  2) V1에서 엔진 1개 고장 → 계속 이륙해서 35 ft 통과
+  //  3) V1에서 엔진 1개 고장 → 이륙 중단해서 정지
+  let tofl = null;
+  if (result === 'liftoff') {
+    const v1p = path[v1Idx];
+    const cont = rollFrom(v1p, ac.n - 1);
+    const gOei = climbAngle(ac.n - 1, true);
+    const oei = cont.result === 'liftoff' && gOei > 0
+      ? cont.pts[cont.pts.length - 1].x + Vlof * P.flare + SCREEN / Math.tan(gOei) : Infinity;
+    const asd = stopFrom(v1p).slice(-1)[0].x;
+    const parts = [
+      { key: 'aeo', name: '엔진 정상 35 ft × 1.15', x: tod * P.safety },
+      { key: 'oei', name: '엔진 고장 후 계속 이륙', x: oei },
+      { key: 'asd', name: '엔진 고장 후 이륙 중단', x: asd },
+    ];
+    const gov = parts.reduce((m, q) => (q.x > m.x ? q : m));
+    tofl = { x: gov.x, gov, parts };
+  }
+
   // 판정
   let status, text;
   const tw = Math.max(0, -Vw);                                // 배풍 성분 m/s
@@ -148,10 +171,12 @@ export function compute(inp, { ignoreCrosswind = false } = {}) {
   else if (xwBlocked) { status = 'no'; text = `측풍 ${xw.toFixed(1)} m/s가 ${rw.label} 활주로 한계 ${rw.xw} m/s를 넘습니다. 이륙 금지.`; }
   else if (result === 'nothrust') { status = 'no'; text = '순추력이 부족해 부양 속도까지 가속하지 못합니다. 중량을 줄이거나 다른 공항을 고르세요.'; }
   else if (result === 'overrun' || xLof > ap.tora) { status = 'no'; text = '부양 속도에 도달하기 전에 활주로가 끝납니다. 이륙 불가.'; }
-  else if (over) { status = 'no'; text = `최대 이륙 중량(${(ac.mtow / 1000).toFixed(1)} t)을 ${((inp.mass * 1000 - ac.mtow) / 1000).toFixed(1)} t 초과했습니다. 계산상 활주는 가능하지만 이륙할 수 없는 중량입니다.`; }
-  else if (tod * P.safety > ap.tora) { status = 'warn'; text = `35 ft 통과 거리에 안전 마진 15%를 넣으면 활주로가 ${fmt(tod * P.safety - ap.tora)} m 부족합니다. 주의가 필요합니다.`; }
-  else if (gradOEI < gradMin) { status = 'warn'; text = `엔진 1개 고장 시 상승 기울기 ${gradOEI.toFixed(1)}%로 규정 최소 ${gradMin}%보다 낮습니다. 중량을 줄이세요.`; }
-  else { status = 'go'; text = `35 ft 통과 거리에 안전 마진 15%를 넣어도 활주로가 ${fmt(ap.tora - tod * P.safety)} m 남습니다.`; }
+  else if (over) { status = 'reg'; text = `최대 이륙 중량(${(ac.mtow / 1000).toFixed(1)} t)을 ${((inp.mass * 1000 - ac.mtow) / 1000).toFixed(1)} t 초과했습니다. 물리적으로는 뜨지만 규정상 이륙할 수 없는 중량입니다.`; }
+  else if (!Number.isFinite(tofl.x)) { status = 'reg'; text = '규정상 이륙 불가: V1에서 엔진 1개가 고장 나면 남은 엔진으로 35 ft까지 올라가지 못합니다. 엔진이 모두 정상이면 뜨지만, 이 중량으로는 허가가 나지 않아요.'; }
+  else if (tofl.x > ap.tora) { status = 'reg'; text = `규정상 이륙 불가: "${tofl.gov.name}"에 ${fmt(tofl.x)} m가 필요한데 활주로는 ${fmt(ap.tora)} m입니다. 엔진이 모두 정상이면 뜨지만 허가가 나지 않아요.`; }
+  else if (gradOEI < gradMin) { status = 'reg'; text = `규정상 이륙 불가: 엔진 1개 고장 시 상승 기울기 ${gradOEI.toFixed(1)}%로 최소 ${gradMin}%보다 낮습니다.`; }
+  else if (tofl.x > ap.tora * 0.95) { status = 'warn'; text = `규정 이륙 거리 ${fmt(tofl.x)} m로 활주로 여유가 ${fmt(ap.tora - tofl.x)} m뿐입니다. 정한 기준은 "${tofl.gov.name}".`; }
+  else { status = 'go'; text = `규정 이륙 거리 ${fmt(tofl.x)} m, 활주로가 ${fmt(ap.tora - tofl.x)} m 남습니다. 가장 긴 경우는 "${tofl.gov.name}".`; }
 
   // 측풍이 없었을 때와 비교 (화면 표시용)
   let xwEffect = null;
@@ -165,7 +190,7 @@ export function compute(inp, { ignoreCrosswind = false } = {}) {
     };
   }
 
-  return { ac, ap, rw, inp, rho, xwEffect, Vw, xw, Vs, Vr, Vlof, V2, V1, path, result, xLof, tod, gammaAEO, gradOEI, gradMin,
+  return { ac, ap, rw, inp, rho, xwEffect, tofl, Vw, xw, Vs, Vr, Vlof, V2, V1, path, result, xLof, tod, gammaAEO, gradOEI, gradMin,
     v1Idx, v1AtVr, vrIdx, rollFrom, stopFrom, climbAngle, status, text, xwBlocked, twBlocked };
 }
 
@@ -228,6 +253,8 @@ export function evaluateFlight(R, { failVa = null, decision = null, abortIdx = n
 
 export const WIND_BANDS = [0, 5, 10, 15, 20, 25];          // m/s 구간
 export const windBand = w => (w >= 25 ? 25 : Math.floor(w / 5) * 5);
+export const TEMP_BANDS = [-30, -15, 0, 15, 30, 45];      // °C 구간
+export const tempBand = t => (t >= 45 ? 45 : Math.floor((t + 30) / 15) * 15 - 30);
 export const CLOSE_CALL_M = 100;                            // 아슬아슬: 남는 활주로 기준
 
 const legalMass = R => R.inp.mass * 1000 <= R.ac.mtow;
@@ -241,6 +268,7 @@ export function flightMarks(R, ev) {
   if (success) {
     marks.push(`wind:${ap}:${windBand(R.inp.wind)}`);
     marks.push(`rwy:${ap}:${R.inp.rwy}`);
+    marks.push(`temp:${ap}:${tempBand(R.inp.oat)}`);
     const rem = R.ap.tora - liftoffX(R, ev);
     if (rem >= 0 && rem <= CLOSE_CALL_M) marks.push(`close:${ap}`);
   }
@@ -254,6 +282,8 @@ const countPrefix = (pr, prefix) => Object.keys(pr).filter(k => k.startsWith(pre
 // 윈드 마스터: 6개 풍속 구간을 모두 채운 공항 수
 export const windDoneAirports = pr => AIRPORTS.filter(a => WIND_BANDS.every(b => pr[`wind:${a.code}:${b}`] > 0)).length;
 // 전천후: 4가지 활주로 상태에서 모두 이륙 성공한 공항 수
+// 기온 마스터: 6개 기온 구간을 모두 채운 공항 수
+export const tempDoneAirports = pr => AIRPORTS.filter(a => TEMP_BANDS.every(b => pr[`temp:${a.code}:${b}`] > 0)).length;
 export const rwyDoneAirports = pr => AIRPORTS.filter(a => Object.keys(RUNWAY).every(k => pr[`rwy:${a.code}:${k}`] > 0)).length;
 
 const ROMAN = ['I', 'II', 'III', 'IV'];
@@ -267,6 +297,8 @@ const series = (id, name, goals, current, unit, desc) => goals.map((g, i) => ({
 export const ACHIEVEMENTS = [
   ...series('wind', '윈드 마스터', AIRPORT_TIERS, windDoneAirports, '곳',
     g => `${g === 11 ? '모든 공항' : `공항 ${g}곳`}에서 풍속 ${WIND_BANDS.join('·')} m/s 구간마다 이륙 성공`),
+  ...series('temp', '기온 마스터', AIRPORT_TIERS, tempDoneAirports, '곳',
+    g => `${g === 11 ? '모든 공항' : `공항 ${g}곳`}에서 기온 ${TEMP_BANDS.map(t => String(t).replace('-', '−')).join('·')} °C 구간마다 이륙 성공`),
   ...series('rwy', '전천후', AIRPORT_TIERS, rwyDoneAirports, '곳',
     g => `${g === 11 ? '모든 공항' : `공항 ${g}곳`}에서 건조·젖음·눈·결빙 활주로 모두 이륙 성공`),
   ...series('oei', '변수 제거', [1, 10, 50, 100], pr => pr.oei_ok || 0, '회',

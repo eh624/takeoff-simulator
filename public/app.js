@@ -1,4 +1,4 @@
-import { AIRCRAFT, AIRPORTS, RUNWAY, P, KT, compute, fmt, failIdxFor, pickFailVa, evaluateFlight, flightMarks, ACHIEVEMENTS, ACHIEVEMENT_SERIES, WIND_BANDS, windBand, CLOSE_CALL_M } from './sim.js';
+import { AIRCRAFT, AIRPORTS, RUNWAY, P, KT, compute, fmt, failIdxFor, pickFailVa, evaluateFlight, flightMarks, ACHIEVEMENTS, ACHIEVEMENT_SERIES, WIND_BANDS, windBand, TEMP_BANDS, tempBand, CLOSE_CALL_M } from './sim.js';
 
 const $ = id => document.getElementById(id);
 let progress = {};          // 업적 진행 기록 (key → 횟수)
@@ -238,6 +238,16 @@ function drawChart(st) {
     ctx.stroke();
   };
   ctx.globalAlpha = 0.25; curve(path, Infinity, colors.trace, 2); ctx.globalAlpha = 1;
+  // 이전 비행 (비교 기준)
+  if (baseR && baseR !== R && JSON.stringify(baseR.inp) !== JSON.stringify(R.inp)) {
+    ctx.save(); ctx.setLineDash([5, 4]); ctx.strokeStyle = colors.muted; ctx.lineWidth = 1.5; ctx.beginPath();
+    let st0 = false;
+    for (const q of baseR.path) { const px = X(q.x), py = Y(Math.max(0, q.V + baseR.Vw) * KT); st0 ? ctx.lineTo(px, py) : (ctx.moveTo(px, py), st0 = true); }
+    ctx.stroke(); ctx.restore();
+    const lq = baseR.path[baseR.path.length - 1];
+    ctx.fillStyle = colors.muted; ctx.font = '500 10px ' + mono; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText('이전 비행', Math.min(X(lq.x) + 6, w - PAD_R - 50), Y(Math.max(0, lq.V + baseR.Vw) * KT) + 6);
+  }
   const accelUpto = anim.abort ? anim.abort[0].t : (anim.mode === 'idle' ? 0 : show);
   if (anim.failed && tr !== R.path) { curve(tr.slice(0, anim.failIdx + 1), accelUpto, colors.trace, 2.5); curve(tr.slice(anim.failIdx), accelUpto, colors.warn, 2.5); }
   else curve(tr, accelUpto, colors.trace, 2.5);
@@ -282,6 +292,8 @@ function showXpPreview() {
   const chip = (txt, isNew) => `<span class="chip${isNew ? ' new' : ''}">${isNew ? '★ ' : '✓ '}${esc(txt)}</span>`;
   const wkey = `wind:${ap}:${windBand(R.inp.wind)}`;
   if (marks.includes(wkey)) chips.push(chip(`윈드 마스터 · ${ap} ${windBand(R.inp.wind)} m/s 칸`, !progress[wkey]));
+  const tkey = `temp:${ap}:${tempBand(R.inp.oat)}`;
+  if (marks.includes(tkey)) chips.push(chip(`기온 마스터 · ${ap} ${tempBand(R.inp.oat)} °C 칸`, !progress[tkey]));
   const rkey = `rwy:${ap}:${R.inp.rwy}`;
   if (marks.includes(rkey)) chips.push(chip(`전천후 · ${ap} ${R.rw.label}`, !progress[rkey]));
   if (marks.includes(`close:${ap}`)) chips.push(chip(`아슬아슬 · ${ap}`, !progress[`close:${ap}`]));
@@ -297,17 +309,91 @@ function showXpPreview() {
   box.innerHTML = head + (chips.join('') || '<span class="lbl">이 조건으로는 진행되는 업적이 없어요</span>') + remLine + penalty + practice;
 }
 
+// ===== 이전 비행과 비교: 조건을 바꾸면 무엇이 왜 달라지는지 =====
+let baseR = null;   // 비교 기준 (마지막으로 이륙 버튼을 누른 조건)
+const TIPS = [
+  '기온을 15 °C에서 35 °C로 올려 보세요. 부양 속도와 활주 거리가 어떻게 바뀔까요?',
+  '중량을 20 t 늘려 보세요. 부양 속도보다 활주 거리가 훨씬 많이 늘어나는 이유가 보입니다.',
+  '같은 조건으로 공항만 덴버(표고 5,434 ft)로 바꿔 보세요. 공기가 희박하면 무엇이 달라질까요?',
+  '풍향을 0°(정풍)에서 180°(배풍)로 돌려 보세요. 대기 속도는 같은데 지면 속도는 달라집니다.',
+  '활주로를 건조에서 결빙으로 바꿔 보세요. 이륙 거리와 이륙 중단 거리가 서로 반대로 움직입니다.',
+  '기종을 A321neo에서 A380으로 바꿔 보세요. 무게와 추력의 비율이 이륙 거리를 정합니다.',
+];
+function renderCompare() {
+  const box = $('compare');
+  const same = baseR && JSON.stringify(baseR.inp) === JSON.stringify(R.inp);
+  if (!baseR || same) {
+    box.innerHTML = `<span class="ctitle">해볼 것</span><p>${TIPS[Math.floor(Date.now() / 60000) % TIPS.length]}</p>`;
+    return;
+  }
+  const A = baseR, B = R, kt = v => Math.round(v * KT);
+  // 바뀐 조건
+  const ch = [];
+  if (A.ac.id !== B.ac.id) ch.push(`기종 ${A.ac.name} → ${B.ac.name}`);
+  if (A.ap.code !== B.ap.code) ch.push(`공항 ${A.ap.code} → ${B.ap.code}`);
+  if (A.inp.mass !== B.inp.mass) ch.push(`중량 ${A.inp.mass} → ${B.inp.mass} t`);
+  if (A.inp.oat !== B.inp.oat) ch.push(`기온 ${A.inp.oat} → ${B.inp.oat} °C`);
+  if (A.inp.rwy !== B.inp.rwy) ch.push(`활주로 ${A.rw.label} → ${B.rw.label}`);
+  if (Math.abs(A.Vw - B.Vw) > 0.05) ch.push(`정풍 성분 ${A.Vw.toFixed(1)} → ${B.Vw.toFixed(1)} m/s`);
+  if (Math.abs(A.xw - B.xw) > 0.05) ch.push(`측풍 성분 ${A.xw.toFixed(1)} → ${B.xw.toFixed(1)} m/s`);
+  // 결과 변화
+  const both = A.result === 'liftoff' && B.result === 'liftoff';
+  const delta = (a, b, unit, dec = 0) => {
+    const d = b - a, sign = d > 0 ? '+' : d < 0 ? '−' : '±';
+    const cls = Math.abs(d) < 0.5 ? 'same' : d > 0 ? 'up' : 'down';
+    return `<b>${fmt(a, dec)} → ${fmt(b, dec)} ${unit}</b> <span class="${cls}">${sign}${fmt(Math.abs(d), dec)}${unit === 'm' && a > 0 ? ` (${sign}${Math.round(Math.abs(d) / a * 100)}%)` : ''}</span>`;
+  };
+  const out = [];
+  if (both) {
+    out.push(['부양 속도 (대기)', delta(kt(A.Vlof), kt(B.Vlof), 'kt')]);
+    out.push(['부양 속도 (지면)', delta(kt(A.Vlof - A.Vw), kt(B.Vlof - B.Vw), 'kt')]);
+    out.push(['부양까지 활주 거리', delta(Math.round(A.xLof), Math.round(B.xLof), 'm')]);
+    if (A.V1 != null && B.V1 != null) out.push(['V1', delta(kt(A.V1), kt(B.V1), 'kt')]);
+    if (A.tofl && B.tofl && Number.isFinite(A.tofl.x) && Number.isFinite(B.tofl.x)) out.push(['규정 이륙 거리', delta(Math.round(A.tofl.x), Math.round(B.tofl.x), 'm')]);
+  } else {
+    out.push(['결과', `${A.result === 'liftoff' ? '이륙' : '실패'} → ${B.result === 'liftoff' ? '이륙' : '실패'}`]);
+  }
+  // 왜?
+  const why = [];
+  const rhoPct = Math.round((B.rho / A.rho - 1) * 100);
+  if ((A.inp.oat !== B.inp.oat || A.ap.alt !== B.ap.alt) && rhoPct !== 0)
+    why.push(`공기 밀도가 ${rhoPct > 0 ? '+' : '−'}${Math.abs(rhoPct)}% 변했어요. 공기가 ${rhoPct < 0 ? '희박해지면' : '진해지면'} 같은 양력을 얻는 데 필요한 대기 속도가 ${rhoPct < 0 ? '빨라지고' : '느려지고'}(밀도의 제곱근에 반비례), 엔진 추력도 ${rhoPct < 0 ? '줄어요' : '늘어요'}.`);
+  if (A.inp.mass !== B.inp.mass && A.ac.id === B.ac.id) {
+    const m = B.inp.mass / A.inp.mass;
+    why.push(`무게가 ${m > 1 ? '+' : '−'}${Math.round(Math.abs(m - 1) * 100)}%면 부양 속도는 무게의 제곱근만큼(약 ${m > 1 ? '+' : '−'}${Math.round(Math.abs(Math.sqrt(m) - 1) * 100)}%) 바뀌지만, 가속도 같이 ${m > 1 ? '느려져서' : '빨라져서'} 활주 거리는 무게의 거의 제곱으로(약 ${m > 1 ? '+' : '−'}${Math.round(Math.abs(m * m - 1) * 100)}%) 바뀝니다.`);
+  }
+  if (Math.abs(A.Vw - B.Vw) > 0.05)
+    why.push(`정풍은 처음부터 날개에 바람을 불어 줍니다. 부양에 필요한 대기 속도는 그대로지만, 정풍이 ${B.Vw > A.Vw ? '세지면' : '약해지면'} 땅 위에서 달려야 할 속도가 ${B.Vw > A.Vw ? '줄어서' : '늘어서'} 활주 거리가 ${B.Vw > A.Vw ? '짧아져요' : '길어져요'}.`);
+  if (Math.abs(A.xw - B.xw) > 0.05)
+    why.push('측풍이 세면 방향을 잡느라 조종면과 타이어 저항이 늘어 활주 거리가 길어지고, 이륙 중단 때 제동력이 줄어요.');
+  if (A.inp.rwy !== B.inp.rwy)
+    why.push(`이륙 거리는 구름 저항(${A.rw.roll} → ${B.rw.roll}), 이륙 중단 거리와 V1은 제동 마찰(${A.rw.brake} → ${B.rw.brake})이 좌우합니다.`);
+  if (A.ac.id !== B.ac.id) {
+    const tw = X => (X.ac.thrust * X.ac.n) / (X.inp.mass * 1000 * 9.81);
+    why.push(`추력 ÷ 무게가 ${tw(A).toFixed(2)} → ${tw(B).toFixed(2)}, 실속 속도가 ${kt(A.Vs)} → ${kt(B.Vs)} kt로 바뀌었어요. 추력 대비 무게가 가벼울수록, 날개가 넓을수록 짧게 뜹니다.`);
+  }
+  if (A.ap.code !== B.ap.code && A.ap.tora !== B.ap.tora)
+    why.push(`활주로 길이가 ${fmt(A.ap.tora)} → ${fmt(B.ap.tora)} m로 바뀌면 이륙 거리는 그대로여도 V1과 규정 판정이 달라집니다.`);
+  box.innerHTML = `<span class="ctitle">이전 비행과 비교</span>
+    <p class="cchg">${ch.map(esc).join(' · ')}</p>
+    <dl class="cout">${out.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
+    ${why.length ? `<ul class="cwhy">${why.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}`;
+}
+
 function showResults() {
   const pill = $('pill');
   pill.className = 'pill ' + R.status;
-  pill.textContent = { go: '이륙 가능', warn: '주의', no: '이륙 불가' }[R.status];
+  pill.textContent = R.xwBlocked ? '이륙 금지' : { go: '이륙 가능', warn: '여유 부족', reg: '규정 초과', no: '이륙 불가' }[R.status];
   $('verdictText').textContent = R.text;
   const kt = v => Math.round(v * KT) + ' kt';
   const lof = R.path[R.path.length - 1];
   const rows = [];
   if (R.result === 'liftoff') {
     rows.push(['부양까지 활주 거리', `${fmt(R.xLof)} m <small>/ 활주로 ${fmt(R.ap.tora)} m</small>`]);
-    rows.push(['35 ft 통과 거리', `${fmt(R.tod)} m <small>마진 15% 포함 ${fmt(R.tod * P.safety)} m</small>`]);
+    if (R.tofl) {
+      const parts = R.tofl.parts.map(q => `${q.name} ${Number.isFinite(q.x) ? fmt(q.x) + ' m' : '상승 불가'}`).join(' · ');
+      rows.push(['규정 이륙 거리', `${Number.isFinite(R.tofl.x) ? fmt(R.tofl.x) + ' m' : '상승 불가'} <small>${parts}</small>`]);
+    }
     rows.push(['부양 속도 (대기)', `${kt(R.Vlof)} <small>${lof.t.toFixed(1)} s</small>`]);
     const p1 = R.path[R.v1Idx];
     rows.push(['이륙결정속도 V1', `${kt(p1.V + R.Vw)} <small>${R.v1AtVr ? 'VR까지 정지 가능' : '활주로 길이로 제한'} · ${fmt(p1.x)} m</small>`]);
@@ -332,6 +418,7 @@ function showResults() {
   $('go').disabled = R.xwBlocked;
   $('v1test').disabled = R.xwBlocked || R.v1Idx == null;
   showXpPreview();
+  renderCompare();
 }
 
 function syncLabels() {
@@ -352,6 +439,7 @@ function syncLabels() {
 function recompute() {
   syncLabels();
   R = compute(readInputs());
+  if (!baseR) baseR = R;
   drawDial(+$('wdir').value, R.xwBlocked);
   stopAnim();
   showResults();
@@ -371,6 +459,7 @@ function stopAnim() {
 }
 async function start(autoAbortIdx) {
   stopAnim();
+  baseR = R;   // 이번 조건을 다음 비교의 기준으로
   const myR = R;
   const mode = autoAbortIdx != null ? 'v1test' : $('failForce').checked ? 'practice' : 'normal';
   const localFail = () => (mode === 'practice' || (mode === 'normal' && Math.random() < P.failProb)) ? pickFailVa(R, Math.random()) : null;
@@ -541,6 +630,7 @@ async function report() {
       const [kind, ap, band] = m.split(':');
       const isNew = !before[m];
       const label = kind === 'wind' ? `윈드 마스터 · ${ap} ${band} m/s 칸`
+        : kind === 'temp' ? `기온 마스터 · ${ap} ${band} °C 칸`
         : kind === 'rwy' ? `전천후 · ${ap} ${RUNWAY[band]?.label ?? band} 활주로`
         : kind === 'close' ? `아슬아슬 · ${ap} (남은 활주로 ${fmt(r.remaining)} m)`
         : kind === 'fail' ? `실패는 성공의 어머니 · ${ap}`
@@ -608,22 +698,21 @@ function renderAchievements() {
       }).join('')}
       <p class="muted">${note}</p>
     </div>`;
+  const tempGrid = grid('temp:', TEMP_BANDS, TEMP_BANDS.map(t => (t < 0 ? '−' + -t : t)), '한 공항의 6칸(기온 구간, °C: −30~−16, −15~−1, 0~14, 15~29, 30~44, 45)을 모두 채우면 1곳 완성');
   const rwyKeys = Object.keys(RUNWAY);
   const windGrid = grid('wind:', WIND_BANDS, WIND_BANDS, '한 공항의 6칸(풍속 구간, m/s)을 모두 채우면 1곳 완성');
   const rwyGrid = grid('rwy:', rwyKeys, rwyKeys.map(k => RUNWAY[k].label), '한 공항에서 4가지 활주로 상태를 모두 채우면 1곳 완성');
-  const extraFor = { wind: windGrid, rwy: rwyGrid, close: apChips('close:'), fail: apChips('fail:') };
+  const extraFor = { wind: windGrid, temp: tempGrid, rwy: rwyGrid, close: apChips('close:'), fail: apChips('fail:') };
   $('achList').innerHTML = ACHIEVEMENT_SERIES.map(id => {
     const tiers = ACHIEVEMENTS.filter(a => a.series === id);
     const cur = tiers[0].current(progress);
     const next = tiers.find(t => !myAch.has(t.key));
     const pips = tiers.map(t => `<span class="pip${myAch.has(t.key) ? ' on' : ''}" title="${esc(t.name)}: ${esc(t.desc)}">${t.name.split(' ').pop()}</span>`).join('');
     const pct = next ? Math.min(100, Math.round((cur / next.goal) * 100)) : 100;
-    const state = next ? `다음 ${esc(next.name)} · ${fmt(Math.min(cur, next.goal))} / ${fmt(next.goal)} ${next.unit}` : '모든 단계 달성';
     return `<article class="ach${next ? '' : ' done'}">
       <div class="atop"><h3>${esc(tiers[0].seriesName)}</h3><span class="pips">${pips}</span></div>
       <p>${esc((next || tiers[tiers.length - 1]).desc)}</p>
       <div class="abar" aria-hidden="true"><i style="width:${pct}%"></i></div>
-      <span class="astate">${state}</span>
       ${extraFor[id] || ''}
     </article>`;
   }).join('');

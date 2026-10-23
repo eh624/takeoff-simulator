@@ -224,6 +224,18 @@ button.wide { width: 100%; padding: 12px; font-size: .95rem; border-radius: 6px;
 .pip { font-family: var(--display); font-weight: 700; font-size: .78rem; min-width: 26px; text-align: center; padding: 1px 5px; border-radius: 3px; border: 1px solid var(--line); color: var(--muted); }
 .pip.on { background: var(--sign); border-color: var(--sign); color: var(--sign-ink); }
 .wrow span.ap.full { color: var(--go); font-weight: 700; }
+.compare { border-left: 3px solid var(--trace); background: color-mix(in srgb, var(--trace) 6%, var(--panel)); border-radius: 0 6px 6px 0; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; font-size: .86rem; }
+.compare p { margin: 0; }
+.ctitle { font-family: var(--display); font-weight: 700; font-size: 1rem; letter-spacing: .03em; color: var(--trace); }
+.cchg { color: var(--muted); }
+.cout { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 4px 16px; margin: 0; }
+.cout div { min-width: 0; }
+.cout dt { font-size: .74rem; color: var(--muted); }
+.cout dd { margin: 0; font-family: var(--mono); font-size: .84rem; font-variant-numeric: tabular-nums; }
+.cout b { font-weight: 500; }
+.cout .up { color: var(--stop); } .cout .down { color: var(--go); } .cout .same { color: var(--muted); }
+.cwhy { margin: 0; padding-left: 18px; display: grid; gap: 3px; color: var(--ink); }
+.pill.reg { background: var(--stop); }
 .xppreview .chip.new { border-color: var(--warn); color: var(--warn); }
 .xppreview b.hit { color: var(--go); }
 .board h2 small { font-family: var(--body); font-size: .8rem; font-weight: 400; margin-left: 6px; }
@@ -366,6 +378,7 @@ button.wide { width: 100%; padding: 12px; font-size: .95rem; border-radius: 6px;
           </label>
         </div>
         <div class="xppreview" id="xpPreview" aria-live="polite"></div>
+        <div class="compare" id="compare" aria-live="polite"></div>
         <p class="guest" id="guestHint" hidden>로그인하면 업적 진행이 기록되고 순위표에 이름이 올라갑니다.</p>
         <canvas id="scene" aria-label="활주로 측면도"></canvas>
         <div class="decide" id="decide" role="alertdialog" aria-labelledby="dTitle" aria-describedby="dInfo" hidden>
@@ -415,12 +428,13 @@ button.wide { width: 100%; padding: 12px; font-size: .95rem; border-radius: 6px;
           <li>지상 활주 양력계수 0.6, 실속속도(Vs)는 최대 양력계수(이륙 플랩)로 계산</li>
           <li>VR(기수 들기) = 1.10 Vs, 부양 = 1.17 Vs, V2(안전 이륙 속도) = 1.20 Vs. V1은 VR보다 클 수 없음</li>
           <li>추력은 공기 밀도와 속도에 따라 감소하도록 근사 (정지 추력의 95%에서 시작)</li>
-          <li>35 ft 통과 거리 = 부양 거리 + 2초 전환 구간 + V2 상승각으로 35 ft까지 가는 거리. 판정은 이 거리 × 1.15 기준</li>
+          <li>판정은 실제 규정의 이륙 필드 길이: ① 엔진 정상 35 ft 통과 거리 × 1.15 ② V1에서 엔진 1개 고장 후 계속 이륙해 35 ft 통과 ③ V1에서 엔진 1개 고장 후 중단해 정지, 셋 중 가장 긴 값이 활주로 안이어야 함. 엔진 1개 고장 시 상승 기울기도 쌍발 2.4%, 4발 3.0% 이상이어야 함</li>
+          <li>35 ft 통과 거리 = 부양 거리 + 2초 전환 구간 + 상승각으로 35 ft까지 가는 거리 (상승 성능은 1.25 Vs에서 계산)</li>
           <li>엔진 1개 고장: 매 이륙마다 3% 확률(연습 모드는 항상). 고장 엔진 항력 추가, 5초 안에 고르지 않으면 계속 이륙</li>
           <li>측풍 불이익: 한계 대비 비율이 클수록 조종면·옆미끄럼 항력 증가(최대 CD +0.03), 구름 저항 최대 +60%, 이륙 중단 제동력 최대 −35%</li>
           <li>바람 한계: 측풍은 활주로 상태별(건조 17·젖음 8·눈 6·결빙 5 m/s), 배풍은 15 kt. 넘으면 이륙 금지</li>
           <li>이륙 중단: 반응시간 2초 → 브레이크 + 스포일러 + 역추진(추력의 35%)</li>
-          <li>V1은 "가속-정지 거리 = 활주로 길이"가 되는 속도로 정의. 엔진 1개 고장 후 계속 이륙하는 경우는 고려하지 않음</li>
+          <li>V1은 "가속-정지 거리 = 활주로 길이"가 되는 가장 빠른 속도(VR 이하). 실제처럼 계속 이륙 거리와 균형을 맞추는 최적화는 하지 않음</li>
           <li>기종 제원과 활주로 길이는 공개 자료 기반 근사값입니다. 교육용 모델이며 실제 운항에 쓰면 안 됩니다.</li>
         </ul>
       </div>
