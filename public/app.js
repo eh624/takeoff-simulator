@@ -1,6 +1,7 @@
-import { AIRCRAFT, AIRPORTS, RUNWAY, P, KT, compute, fmt, failIdxFor, pickFailVa, levelFor, xpForLevel, rankName, DAILY_XP_CAP } from './sim.js';
+import { AIRCRAFT, AIRPORTS, RUNWAY, P, KT, compute, fmt, failIdxFor, pickFailVa, evaluateFlight, flightXp, levelFor, xpForLevel, rankName, DAILY_XP_CAP } from './sim.js';
 
 const $ = id => document.getElementById(id);
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 AIRCRAFT.forEach(a => $('ac').add(new Option(a.name, a.id)));
 AIRPORTS.forEach(a => $('ap').add(new Option(`${a.code} · ${a.name}`, a.code)));
 Object.entries(RUNWAY).forEach(([k, r], i) => {
@@ -264,6 +265,25 @@ function render() {
 }
 
 // ===== 결과 표시 =====
+// 이륙 전 예상 경험치 (이륙 성공 기준, 서버와 같은 규칙)
+function showXpPreview() {
+  const box = $('xpPreview');
+  if ($('failForce').checked) {
+    box.innerHTML = '<span class="total zero">연습 모드</span><span class="lbl">경험치 없음</span>';
+    return;
+  }
+  const { xp, items } = flightXp(R, evaluateFlight(R));
+  if (xp === 0) {
+    box.innerHTML = `<span class="total zero">예상 0 XP</span><span class="lbl">${esc(items[0][0])}</span>`;
+    return;
+  }
+  const chips = items.map(([k, v]) => `<span class="chip">${esc(k)} <b>+${v}</b></span>`).join('');
+  box.innerHTML = `<span class="total">+${xp} XP</span><span class="lbl">성공 시 예상</span>${chips}`
+    + (R.xwEffect && R.xwEffect.lofPlus != null
+      ? `<span class="penalty">측풍 불이익: 활주 거리 +${fmt(R.xwEffect.lofPlus)} m, 이륙 중단 시 제동력 −${Math.round(R.xwEffect.brakeLoss * 100)}%</span>` : '')
+    + '<span class="bonus">엔진 고장이 나면 정석대로 대응할 때 +30 XP 추가</span>';
+}
+
 function showResults() {
   const pill = $('pill');
   pill.className = 'pill ' + R.status;
@@ -285,12 +305,20 @@ function showResults() {
     const p = R.path[R.path.length - 1];
     rows.push(['도달 속도 (대기)', `${kt(p.V + R.Vw)} <small>부양 속도 ${kt(R.Vlof)}</small>`]);
   }
+  if (R.xwEffect) {
+    const e = R.xwEffect, parts = [];
+    if (e.lofPlus != null) parts.push(`활주 +${fmt(e.lofPlus)} m`);
+    parts.push(`제동력 −${Math.round(e.brakeLoss * 100)}%`);
+    if (e.v1Minus != null && e.v1Minus * KT >= 0.5) parts.push(`V1 −${Math.round(e.v1Minus * KT)} kt`);
+    rows.push(['측풍 불이익', `${parts.join(' · ')} <small>한계의 ${Math.round(e.ratio * 100)}%</small>`]);
+  }
   rows.push(['실속 속도', kt(R.Vs)]);
   rows.push(['공기 밀도', `${R.rho.toFixed(3)} kg/m³`]);
   rows.push(['정풍 / 측풍', `${R.Vw >= 0 ? '+' : ''}${R.Vw.toFixed(1)} / ${R.xw.toFixed(1)} m/s`]);
   $('facts').innerHTML = rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
   $('go').disabled = R.xwBlocked;
   $('v1test').disabled = R.xwBlocked || R.v1Idx == null;
+  showXpPreview();
 }
 
 function syncLabels() {
@@ -447,6 +475,7 @@ $('abort').addEventListener('click', () => {
   doAbort(idx);
 });
 $('dGo').addEventListener('click', () => choose('go'));
+$('failForce').addEventListener('change', () => showXpPreview());
 $('dStop').addEventListener('click', () => choose('stop'));
 $('ac').addEventListener('change', () => { setAircraftRange(false); recompute(); });
 ['ap', 'mass', 'oat', 'wind', 'wdir'].forEach(id => $(id).addEventListener('input', recompute));
@@ -501,7 +530,6 @@ async function report() {
   }
 }
 
-const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 async function loadProfile() {
   if (!session) { profile = null; return renderAccount(); }

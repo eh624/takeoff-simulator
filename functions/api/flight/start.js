@@ -11,7 +11,7 @@ export async function onRequestPost({ request, env }) {
   if (!inp) return json({ error: '입력값이 올바르지 않습니다.' }, 400);
 
   const R = compute(inp);
-  if (R.xwBlocked) return json({ error: '측풍 한계를 넘어 이륙할 수 없습니다.' }, 400);
+  if (R.xwBlocked) return json({ error: '바람이 한계를 넘어 이륙할 수 없습니다.' }, 400);
 
   // 너무 잦은 시작 방지: 직전 비행 시작 후 3초 이내면 거절
   const recent = await db(env, `flights?select=started_at&user_id=eq.${user.id}&order=started_at.desc&limit=1`);
