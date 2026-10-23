@@ -1,6 +1,8 @@
-import { AIRCRAFT, AIRPORTS, RUNWAY, P, KT, compute, fmt, failIdxFor, pickFailVa, evaluateFlight, flightXp, levelFor, xpForLevel, rankName, DAILY_XP_CAP } from './sim.js';
+import { AIRCRAFT, AIRPORTS, RUNWAY, P, KT, compute, fmt, failIdxFor, pickFailVa, evaluateFlight, flightMarks, ACHIEVEMENTS, ACHIEVEMENT_SERIES, WIND_BANDS, windBand, CLOSE_CALL_M } from './sim.js';
 
 const $ = id => document.getElementById(id);
+let progress = {};          // 업적 진행 기록 (key → 횟수)
+let myAch = new Set();      // 달성한 업적
 const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 AIRCRAFT.forEach(a => $('ac').add(new Option(a.name, a.id)));
 AIRPORTS.forEach(a => $('ap').add(new Option(`${a.code} · ${a.name}`, a.code)));
@@ -265,23 +267,34 @@ function render() {
 }
 
 // ===== 결과 표시 =====
-// 이륙 전 예상 경험치 (이륙 성공 기준, 서버와 같은 규칙)
+// 이륙 전 미리보기: 이 조건으로 비행하면 어떤 업적이 진행되는지
 function showXpPreview() {
   const box = $('xpPreview');
-  if ($('failForce').checked) {
-    box.innerHTML = '<span class="total zero">연습 모드</span><span class="lbl">경험치 없음</span>';
+  const ap = R.ap.code, chips = [];
+  const penalty = R.xwEffect && R.xwEffect.lofPlus != null
+    ? `<span class="penalty">측풍 불이익: 활주 거리 +${fmt(R.xwEffect.lofPlus)} m, 이륙 중단 시 제동력 −${Math.round(R.xwEffect.brakeLoss * 100)}%</span>` : '';
+  if (R.xwBlocked) {
+    box.innerHTML = `<span class="total zero">이륙 금지</span><span class="lbl">${esc(R.text)}</span>`;
     return;
   }
-  const { xp, items } = flightXp(R, evaluateFlight(R));
-  if (xp === 0) {
-    box.innerHTML = `<span class="total zero">예상 0 XP</span><span class="lbl">${esc(items[0][0])}</span>`;
-    return;
-  }
-  const chips = items.map(([k, v]) => `<span class="chip">${esc(k)} <b>+${v}</b></span>`).join('');
-  box.innerHTML = `<span class="total">+${xp} XP</span><span class="lbl">성공 시 예상</span>${chips}`
-    + (R.xwEffect && R.xwEffect.lofPlus != null
-      ? `<span class="penalty">측풍 불이익: 활주 거리 +${fmt(R.xwEffect.lofPlus)} m, 이륙 중단 시 제동력 −${Math.round(R.xwEffect.brakeLoss * 100)}%</span>` : '')
-    + '<span class="bonus">엔진 고장이 나면 정석대로 대응할 때 +30 XP 추가</span>';
+  const ev = evaluateFlight(R);
+  const marks = flightMarks(R, ev);
+  const chip = (txt, isNew) => `<span class="chip${isNew ? ' new' : ''}">${isNew ? '★ ' : '✓ '}${esc(txt)}</span>`;
+  const wkey = `wind:${ap}:${windBand(R.inp.wind)}`;
+  if (marks.includes(wkey)) chips.push(chip(`윈드 마스터 · ${ap} ${windBand(R.inp.wind)} m/s 칸`, !progress[wkey]));
+  const rkey = `rwy:${ap}:${R.inp.rwy}`;
+  if (marks.includes(rkey)) chips.push(chip(`전천후 · ${ap} ${R.rw.label}`, !progress[rkey]));
+  if (marks.includes(`close:${ap}`)) chips.push(chip(`아슬아슬 · ${ap}`, !progress[`close:${ap}`]));
+  if (marks.includes(`fail:${ap}`)) chips.push(chip(`실패는 성공의 어머니 · ${ap}`, !progress[`fail:${ap}`]));
+  const rem = R.result === 'liftoff' ? R.ap.tora - R.xLof : null;
+  const remLine = rem != null && rem >= 0
+    ? `<span class="lbl">남는 활주로 <b class="${rem <= CLOSE_CALL_M ? 'hit' : ''}">${fmt(rem)} m</b> (아슬아슬은 ${CLOSE_CALL_M} m 이내)</span>` : '';
+  const head = chips.some(c => c.includes(' new'))
+    ? '<span class="total">새 진행!</span>' : '<span class="total zero">이번 조건</span>';
+  const practice = $('failForce').checked
+    ? '<span class="bonus">엔진 고장 연습: 정석대로 대처해서 무사히 끝내면 "변수 제거" +1</span>'
+    : '<span class="bonus">엔진이 고장 나면 정석대로 대처할 때 "변수 제거" +1</span>';
+  box.innerHTML = head + (chips.join('') || '<span class="lbl">이 조건으로는 진행되는 업적이 없어요</span>') + remLine + penalty + practice;
 }
 
 function showResults() {
@@ -359,25 +372,23 @@ function stopAnim() {
 async function start(autoAbortIdx) {
   stopAnim();
   const myR = R;
-  const practice = autoAbortIdx != null || $('failForce').checked;
+  const mode = autoAbortIdx != null ? 'v1test' : $('failForce').checked ? 'practice' : 'normal';
+  const localFail = () => (mode === 'practice' || (mode === 'normal' && Math.random() < P.failProb)) ? pickFailVa(R, Math.random()) : null;
   let failVa = null, note = '';
-  if (session && !practice) {
+  if (session) {
     // 로그인 상태: 서버가 엔진 고장 여부를 정하고 비행을 기록
     $('go').disabled = true;
     try {
-      const res = await api('/api/flight/start', { inputs: R.inp });
+      const res = await api('/api/flight/start', { inputs: R.inp, mode });
       if (R !== myR) return;               // 기다리는 사이 조건이 바뀜
       anim.flightId = res.flightId; failVa = res.failVa;
     } catch (e) {
       if (R !== myR) return;
-      note = `${e.message} 이번 비행은 경험치 없이 진행합니다.`;
-      failVa = Math.random() < P.failProb ? pickFailVa(R, Math.random()) : null;
+      note = `${e.message} 이번 비행은 일지에 기록되지 않습니다.`;
+      failVa = localFail();
     } finally { $('go').disabled = R.xwBlocked; }
-  } else if (autoAbortIdx == null) {
-    // 엔진 고장: 매 이륙 3% 확률(연습 모드는 항상)
-    failVa = ($('failForce').checked || Math.random() < P.failProb) ? pickFailVa(R, Math.random()) : null;
-    if (session) note = '연습 비행이라 경험치가 없습니다.';
-  }
+  } else failVa = localFail();
+  anim.failTarget = failVa;
   anim.failIdx = failVa != null ? failIdxFor(R, failVa) : null;
   anim.mode = 'rolling'; anim.autoAbortIdx = autoAbortIdx;
   $('abort').disabled = false; $('msg').textContent = note;
@@ -417,6 +428,7 @@ function judgement() {
 }
 function doAbort(idx) {
   const p = anim.track[idx];
+  if (!anim.failed) anim.abortIdx = idx;
   anim.abort = R.stopFrom(p, anim.failed ? R.ac.n - 1 : R.ac.n); anim.t = p.t; anim.mode = 'abort';
   $('abort').disabled = true;
   const late = R.v1Idx != null && p.V + R.Vw > R.V1;
@@ -511,25 +523,42 @@ async function api(path, body) {
 // 비행이 끝나면 서버에 결과를 보내 경험치를 받음
 async function report() {
   anim.reported = true;
-  if (!anim.flightId) return;
   const box = $('xpResult');
-  const body = { flightId: anim.flightId, decision: anim.failed ? (anim.decision || 'go') : null, abortIdx: anim.abortIdx ?? null };
-  const before = profile?.level ?? 1;
+  const decision = anim.failed ? (anim.decision || 'go') : null;
+  if (!anim.flightId) {
+    if (sb && !session) {
+      box.innerHTML = '<p class="muted">로그인하면 이번 비행이 업적 진행에 기록됩니다.</p>';
+      box.hidden = false;
+    }
+    return;
+  }
   try {
-    const r = await api('/api/flight/finish', body);
-    const items = r.items.map(([k, v]) => `<li><span>${esc(k)}</span><b>${v > 0 ? '+' + v : v}</b></li>`).join('');
-    const up = r.level > before ? `<p class="levelup">레벨 ${r.level} · ${esc(r.rank)}(으)로 올랐습니다!</p>` : '';
-    const cap = r.capped ? `<p class="muted">오늘 받을 수 있는 경험치(${DAILY_XP_CAP} XP)를 다 받아서 일부만 지급했습니다.</p>` : '';
-    box.innerHTML = `<div class="xphead"><b class="gain">+${r.earned} XP</b><span>누적 ${fmt(r.total)} XP · Lv.${r.level}</span></div><ul>${items}</ul>${up}${cap}`;
+    const r = await api('/api/flight/finish', { flightId: anim.flightId, decision, abortIdx: anim.abortIdx ?? null });
+    const before = { ...progress };
+    const lines = [];
+    if (r.tooFast) lines.push('<p class="muted">비행이 너무 빨리 끝나서 진행으로 치지 않았어요.</p>');
+    for (const m of r.marks || []) {
+      const [kind, ap, band] = m.split(':');
+      const isNew = !before[m];
+      const label = kind === 'wind' ? `윈드 마스터 · ${ap} ${band} m/s 칸`
+        : kind === 'rwy' ? `전천후 · ${ap} ${RUNWAY[band]?.label ?? band} 활주로`
+        : kind === 'close' ? `아슬아슬 · ${ap} (남은 활주로 ${fmt(r.remaining)} m)`
+        : kind === 'fail' ? `실패는 성공의 어머니 · ${ap}`
+        : `변수 제거 · ${(before.oei_ok || 0) + 1}회째`;
+      lines.push(`<li><span>${isNew || kind === 'oei_ok' ? '★' : '✓'} ${esc(label)}</span><b>${isNew || kind === 'oei_ok' ? '진행' : '이미 채움'}</b></li>`);
+    }
+    const got = (r.newAchievements || []).map(a => `<p class="levelup">업적 달성! ${esc(a.name)} <small>${esc(a.desc)}</small></p>`).join('');
+    const head = `<div class="xphead"><b class="gain${got ? '' : ' zero'}">${got ? '업적 달성!' : lines.length ? '업적 진행' : '진행 없음'}</b><span>업적 ${r.count} / ${r.totalCount}${r.remaining != null ? ` · 남은 활주로 ${fmt(r.remaining)} m` : ''}</span></div>`;
+    box.innerHTML = head + got + (lines.length ? `<ul>${lines.filter(l => l.startsWith('<li')).join('')}</ul>` + lines.filter(l => !l.startsWith('<li')).join('') : '');
     box.hidden = false;
     await loadProfile();
+    await loadAchievements();
     loadBoard();
   } catch (e) {
-    box.innerHTML = `<p class="muted">경험치를 기록하지 못했습니다: ${esc(e.message)}</p>`;
+    box.innerHTML = `<p class="muted">기록하지 못했습니다: ${esc(e.message)}</p>`;
     box.hidden = false;
   }
 }
-
 
 async function loadProfile() {
   if (!session) { profile = null; return renderAccount(); }
@@ -545,20 +574,68 @@ function renderAccount() {
   if (session && $('loginBox').open) $('loginBox').close();
   $('guestHint').hidden = !!session;
   if (!session) return;
-  const xp = profile?.xp ?? 0, L = levelFor(xp);
-  const lo = xpForLevel(L), hi = xpForLevel(L + 1);
+  const n = myAch.size, total = ACHIEVEMENTS.length;
   $('meName').textContent = profile?.nickname ?? '조종사';
-  $('meRank').textContent = `Lv.${L} ${rankName(L)}`;
-  $('meBar').style.width = `${Math.round(((xp - lo) / (hi - lo)) * 100)}%`;
-  $('meXp').textContent = `${fmt(xp)} / ${fmt(hi)} XP · 비행 ${fmt(profile?.flights ?? 0)}회`;
+  $('meRank').textContent = `업적 ${n} / ${total}`;
+  $('meBar').style.width = `${Math.round((n / total) * 100)}%`;
+  $('meXp').textContent = `비행 ${fmt(profile?.flights ?? 0)}회`;
+}
+
+// ===== 업적 =====
+async function loadAchievements() {
+  progress = {}; myAch = new Set();
+  if (sb && session) {
+    const [p, a] = await Promise.all([sb.from('progress').select('key, n'), sb.from('achievements').select('key')]);
+    if (!p.error) for (const r of p.data || []) progress[r.key] = r.n;
+    if (!a.error) myAch = new Set((a.data || []).map(r => r.key));
+  }
+  renderAchievements(); renderAccount(); showXpPreview();
+}
+
+function renderAchievements() {
+  const total = ACHIEVEMENTS.length;
+  $('achCount').textContent = `${myAch.size} / ${total}`;
+  $('achBar').style.width = `${Math.round((myAch.size / total) * 100)}%`;
+  $('achNote').hidden = !!session;
+  const apChips = prefix => `<div class="apgrid">${AIRPORTS.map(a => `<span class="${progress[prefix + a.code] ? 'on' : ''}" title="${esc(a.name)}">${a.code}</span>`).join('')}</div>`;
+  // 공항 × 칸 표 (윈드 마스터: 풍속 구간, 전천후: 활주로 상태)
+  const grid = (prefix, cols, head, note) => `<div class="wgrid" role="table">
+      <div class="wrow head" role="row" style="--n:${cols.length}"><span></span>${head.map(h => `<span>${esc(String(h))}</span>`).join('')}</div>
+      ${AIRPORTS.map(a => {
+        const has = c => progress[`${prefix}${a.code}:${c}`] > 0;
+        const full = cols.every(has);
+        return `<div class="wrow" role="row" style="--n:${cols.length}"><span class="ap${full ? ' full' : ''}">${a.code}</span>${cols.map(c => `<span class="${has(c) ? 'on' : ''}">${has(c) ? '✓' : ''}</span>`).join('')}</div>`;
+      }).join('')}
+      <p class="muted">${note}</p>
+    </div>`;
+  const rwyKeys = Object.keys(RUNWAY);
+  const windGrid = grid('wind:', WIND_BANDS, WIND_BANDS, '한 공항의 6칸(풍속 구간, m/s)을 모두 채우면 1곳 완성');
+  const rwyGrid = grid('rwy:', rwyKeys, rwyKeys.map(k => RUNWAY[k].label), '한 공항에서 4가지 활주로 상태를 모두 채우면 1곳 완성');
+  const extraFor = { wind: windGrid, rwy: rwyGrid, close: apChips('close:'), fail: apChips('fail:') };
+  $('achList').innerHTML = ACHIEVEMENT_SERIES.map(id => {
+    const tiers = ACHIEVEMENTS.filter(a => a.series === id);
+    const cur = tiers[0].current(progress);
+    const next = tiers.find(t => !myAch.has(t.key));
+    const pips = tiers.map(t => `<span class="pip${myAch.has(t.key) ? ' on' : ''}" title="${esc(t.name)}: ${esc(t.desc)}">${t.name.split(' ').pop()}</span>`).join('');
+    const pct = next ? Math.min(100, Math.round((cur / next.goal) * 100)) : 100;
+    const state = next ? `다음 ${esc(next.name)} · ${fmt(Math.min(cur, next.goal))} / ${fmt(next.goal)} ${next.unit}` : '모든 단계 달성';
+    return `<article class="ach${next ? '' : ' done'}">
+      <div class="atop"><h3>${esc(tiers[0].seriesName)}</h3><span class="pips">${pips}</span></div>
+      <p>${esc((next || tiers[tiers.length - 1]).desc)}</p>
+      <div class="abar" aria-hidden="true"><i style="width:${pct}%"></i></div>
+      <span class="astate">${state}</span>
+      ${extraFor[id] || ''}
+    </article>`;
+  }).join('');
 }
 
 async function loadBoard() {
-  const { data, error } = await sb.from('profiles').select('nickname, xp, level').order('xp', { ascending: false }).limit(10);
+  if (!sb) return;
+  const { data, error } = await sb.from('profiles').select('nickname, achievements').order('achievements', { ascending: false }).order('achievements_at', { ascending: true, nullsFirst: false }).limit(20);
   if (error) return;
   $('board').innerHTML = data.length
-    ? data.map((p, i) => `<li><span class="pos">${i + 1}</span><span class="nm">${esc(p.nickname)}</span><span class="rk">Lv.${p.level} ${rankName(p.level)}</span><b>${fmt(p.xp)} XP</b></li>`).join('')
-    : '<li class="muted">아직 기록이 없습니다. 첫 이륙의 주인공이 되어 보세요.</li>';
+    ? data.map((p, i) => `<li><span class="pos">${i + 1}</span><span class="nm">${esc(p.nickname)}</span><b>업적 ${p.achievements}</b></li>`).join('')
+    : '<li class="muted">아직 기록이 없습니다.</li>';
   $('boardCard').hidden = false;
 }
 
@@ -590,9 +667,10 @@ async function initAuth() {
   sb.auth.onAuthStateChange((_e, s) => {
     const changed = (s?.user?.id) !== (session?.user?.id);
     session = s;
-    if (changed) { loadProfile(); if (s) $('pwPass').value = ''; }
+    if (changed) { loadProfile().then(loadAchievements); if (s) $('pwPass').value = ''; }
   });
   await loadProfile();
+  loadAchievements();
   loadBoard();
 }
 
@@ -677,7 +755,9 @@ $('nickForm').addEventListener('submit', async e => {
     return nickError('저장하지 못했습니다. 다시 시도하세요.');
   }
   $('nickDlg').close();
-  await loadProfile(); loadBoard();
+  await loadProfile();
+  loadBoard();
 });
 
+renderAchievements();
 initAuth();

@@ -181,6 +181,52 @@ button.wide { width: 100%; padding: 12px; font-size: .95rem; border-radius: 6px;
 .xppreview .chip b { font-family: var(--mono); font-weight: 500; }
 .xppreview .penalty { color: var(--stop); font-size: .78rem; flex-basis: 100%; }
 .xppreview .bonus { color: var(--warn); font-size: .78rem; flex-basis: 100%; }
+.journal { padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+.jhead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.jcount { font-size: .85rem; color: var(--muted); }
+.jcount b { font-family: var(--mono); font-weight: 500; color: var(--ink); font-size: 1rem; }
+.jbar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.jbar i { display: block; height: 100%; background: var(--go); transition: width .6s ease; }
+.jgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px 22px; }
+.jgrid section { min-width: 0; }
+.jgrid h3 { font-family: var(--display); font-size: 1.05rem; letter-spacing: .03em; margin: 0 0 4px; display: flex; justify-content: space-between; }
+.jgrid h3 span { font-family: var(--mono); font-size: .78rem; color: var(--muted); font-weight: 500; }
+.jgrid ul { margin: 0; padding: 0; list-style: none; }
+.jgrid li { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 6px; align-items: baseline; padding: 4px 0; border-top: 1px solid var(--line); font-size: .84rem; color: var(--muted); }
+.jgrid li b { font-family: var(--mono); font-weight: 500; font-size: .75rem; }
+.jgrid li.got { color: var(--ink); }
+.jgrid li.got .mk { color: var(--go); font-weight: 700; }
+.jgrid li.got b { color: var(--go); }
+.xphead .gain.zero { color: var(--muted); font-size: 1.2rem; }
+.xpresult small { color: var(--muted); font-size: .75rem; margin-left: 4px; }
+.achlist { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; align-items: start; }
+.ach { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ach.done { border-color: var(--go); background: color-mix(in srgb, var(--go) 7%, var(--panel)); }
+.atop { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ach h3 { font-family: var(--display); font-size: 1.2rem; margin: 0; letter-spacing: .02em; }
+.astate { font-family: var(--mono); font-size: .8rem; color: var(--muted); white-space: nowrap; }
+.ach.done .astate { color: var(--go); font-weight: 600; }
+.ach p { margin: 0; font-size: .84rem; color: var(--muted); }
+.abar { height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.abar i { display: block; height: 100%; background: var(--trace); }
+.ach.done .abar i { background: var(--go); }
+.apgrid { display: flex; flex-wrap: wrap; gap: 4px; }
+.apgrid span, .wrow span { font-family: var(--mono); font-size: .72rem; }
+.apgrid span { border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; color: var(--muted); }
+.apgrid span.on { background: var(--go); border-color: var(--go); color: #FFFFFF; }
+.wgrid { display: grid; gap: 2px; overflow-x: auto; }
+.wrow { display: grid; grid-template-columns: 40px repeat(var(--n, 6), minmax(22px, 1fr)); gap: 2px; }
+.wrow span { text-align: center; padding: 2px 0; border-radius: 3px; background: var(--bg); color: var(--go); min-height: 18px; }
+.wrow span.on { background: color-mix(in srgb, var(--go) 22%, var(--panel)); font-weight: 700; }
+.wrow.head span, .wrow span.ap { background: none; color: var(--muted); text-align: left; }
+.wrow.head span { text-align: center; }
+.pips { display: flex; gap: 3px; }
+.pip { font-family: var(--display); font-weight: 700; font-size: .78rem; min-width: 26px; text-align: center; padding: 1px 5px; border-radius: 3px; border: 1px solid var(--line); color: var(--muted); }
+.pip.on { background: var(--sign); border-color: var(--sign); color: var(--sign-ink); }
+.wrow span.ap.full { color: var(--go); font-weight: 700; }
+.xppreview .chip.new { border-color: var(--warn); color: var(--warn); }
+.xppreview b.hit { color: var(--go); }
+.board h2 small { font-family: var(--body); font-size: .8rem; font-weight: 400; margin-left: 6px; }
 .guest { font-size: .82rem; color: var(--muted); }
 .xpresult { border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
 .xphead { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
@@ -193,7 +239,7 @@ button.wide { width: 100%; padding: 12px; font-size: .95rem; border-radius: 6px;
 .muted { color: var(--muted); margin: 0; font-size: .85rem; }
 .board { padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
 .board ol { margin: 0; padding: 0; list-style: none; display: grid; }
-.board li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto auto; gap: 10px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--line); }
+.board li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--line); }
 .board .pos { font-family: var(--display); font-weight: 700; font-size: 1.1rem; }
 .board .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .board .rk { font-size: .78rem; color: var(--muted); }
@@ -320,7 +366,7 @@ button.wide { width: 100%; padding: 12px; font-size: .95rem; border-radius: 6px;
           </label>
         </div>
         <div class="xppreview" id="xpPreview" aria-live="polite"></div>
-        <p class="guest" id="guestHint" hidden>로그인하면 이륙 결과에 따라 경험치를 받습니다. 연습 모드와 'V1에서 중단해 보기'는 경험치가 없습니다.</p>
+        <p class="guest" id="guestHint" hidden>로그인하면 업적 진행이 기록되고 순위표에 이름이 올라갑니다.</p>
         <canvas id="scene" aria-label="활주로 측면도"></canvas>
         <div class="decide" id="decide" role="alertdialog" aria-labelledby="dTitle" aria-describedby="dInfo" hidden>
           <div class="dtext"><b id="dTitle">엔진 1개 고장</b><span id="dInfo"></span></div>
@@ -348,8 +394,18 @@ button.wide { width: 100%; padding: 12px; font-size: .95rem; border-radius: 6px;
         <dl id="facts"></dl>
       </div>
 
+      <div class="card journal" id="achCard">
+        <div class="jhead">
+          <h2>업적</h2>
+          <span class="jcount"><b id="achCount">0 / 0</b> 달성</span>
+        </div>
+        <div class="jbar" aria-hidden="true"><i id="achBar"></i></div>
+        <p class="muted" id="achNote">로그인하면 비행할 때마다 업적 진행이 기록되고, 달성한 업적 수로 순위가 정해집니다.</p>
+        <div class="achlist" id="achList"></div>
+      </div>
+
       <div class="card board" id="boardCard" hidden>
-        <h2>순위표</h2>
+        <h2>순위표 <small class="muted">업적 개수 순</small></h2>
         <ol id="board"></ol>
       </div>
 

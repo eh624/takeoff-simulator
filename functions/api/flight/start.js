@@ -1,4 +1,4 @@
-// 비행 시작: 입력값을 검사하고, 엔진 고장 여부(3%)를 서버가 정해 기록
+// 비행 시작: 입력값을 검사하고, 엔진 고장 여부를 서버가 정해 기록
 import { compute, validateInputs, pickFailVa, P } from '../../../public/sim.js';
 import { getUser, db, json } from '../../../lib/sb.js';
 
@@ -19,7 +19,10 @@ export async function onRequestPost({ request, env }) {
     return json({ error: '잠시 후 다시 시도하세요.' }, 429);
   }
 
-  const failVa = Math.random() < P.failProb ? pickFailVa(R, Math.random()) : null;
+  // mode: 'normal'(3% 고장) | 'practice'(항상 고장) | 'v1test'(고장 없음, V1에서 중단)
+  const mode = ['practice', 'v1test'].includes(body?.mode) ? body.mode : 'normal';
+  const fail = mode === 'practice' || (mode === 'normal' && Math.random() < P.failProb);
+  const failVa = fail ? pickFailVa(R, Math.random()) : null;
   const [row] = await db(env, 'flights', {
     method: 'POST', prefer: 'return=representation',
     body: { user_id: user.id, inputs: inp, fail_va: failVa },

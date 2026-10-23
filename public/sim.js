@@ -223,39 +223,58 @@ export function evaluateFlight(R, { failVa = null, decision = null, abortIdx = n
   return { kind: 'normal', safe: R.result === 'liftoff' && R.xLof <= tora, correct: true, endX: last.x, simTime: last.t + 5 };
 }
 
-// 경험치 계산: [항목, 점수] 목록과 합계
-export function flightXp(R, ev) {
-  const zero = reason => ({ xp: 0, items: [[reason, 0]] });
-  if (R.twBlocked) return zero(`배풍 한계(${TAILWIND_LIMIT_KT} kt) 초과`);
-  if (R.xwBlocked) return zero('측풍 한계 초과');
-  if (R.inp.mass * 1000 > R.ac.mtow) return zero('최대 이륙 중량 초과 (규정 위반)');
-  if (!ev.safe) return zero(ev.kind === 'fail-go' || ev.kind === 'normal' ? '이륙 실패' : '활주로 이탈');
-  if (ev.kind === 'abort') return zero('엔진 이상 없이 이륙 중단');
-  const items = [ev.kind === 'fail-stop' ? ['이륙 중단 후 활주로 안에서 정지', 10] : ['이륙 성공', 10]];
-  const heavy = Math.round(Math.max(0, R.inp.mass * 1000 / R.ac.mtow - 0.5) / 0.5 * 20);
-  if (heavy > 0) items.push(['무거운 중량', heavy]);
-  const rwyBonus = { wet: 5, snow: 10, icy: 15 }[R.inp.rwy];
-  if (rwyBonus) items.push([`${R.rw.label} 활주로`, rwyBonus]);
-  // 바람 가중치: 셀수록 많이 (정풍은 이륙을 돕기 때문에 보너스 없음)
-  // 바람은 세기가 아니라 활주로 기준 성분과 한계 대비 비율로 계산
-  // 측풍: 한계에 가까울수록 급격히 어려워짐 → 비율^1.5 × 30 (최대 30)
-  const xwRatio = Math.min(1, R.xw / R.rw.xw);
-  const xwXp = Math.round(Math.pow(xwRatio, 1.5) * 30);
-  if (xwXp >= 2) items.push([`측풍 ${fmt(R.xw * KT)} kt (한계의 ${Math.round(xwRatio * 100)}%)`, xwXp]);
-  // 배풍: 한계(15 kt) 대비 비율 × 15 (최대 15)
-  const twKt = Math.max(0, -R.Vw) * KT;
-  const twXp = Math.round(Math.min(1, twKt / TAILWIND_LIMIT_KT) * 15);
-  if (twXp >= 1) items.push([`배풍 ${fmt(twKt)} kt (한계의 ${Math.round(twKt / TAILWIND_LIMIT_KT * 100)}%)`, twXp]);
-  // 측풍 + 배풍이 함께 있으면 추가
-  if (xwRatio >= 0.5 && twKt / TAILWIND_LIMIT_KT >= 0.5) items.push(['측풍 + 배풍 복합', 10]);
-  if (R.ap.alt > 3000) items.push(['고지대 공항', 10]);
-  if (R.status === 'warn') items.push(['여유 부족 조건', 10]);
-  if (ev.kind === 'fail-stop' || ev.kind === 'fail-go') items.push(ev.correct ? ['엔진 고장 정석 대응', 30] : ['엔진 고장 생존 (원칙과 다른 판단)', 5]);
-  return { xp: items.reduce((s, [, v]) => s + v, 0), items };
+// ===== 업적 =====
+// 비행이 끝나면 "진행 표시(mark)"를 남기고, 쌓인 진행도로 업적을 판정
+
+export const WIND_BANDS = [0, 5, 10, 15, 20, 25];          // m/s 구간
+export const windBand = w => (w >= 25 ? 25 : Math.floor(w / 5) * 5);
+export const CLOSE_CALL_M = 100;                            // 아슬아슬: 남는 활주로 기준
+
+const legalMass = R => R.inp.mass * 1000 <= R.ac.mtow;
+const tookOff = ev => ev.kind === 'normal' || ev.kind === 'fail-go';
+export const liftoffX = (R, ev) => (ev.kind === 'normal' ? R.xLof : ev.endX);
+
+// 이번 비행이 남기는 진행 표시
+export function flightMarks(R, ev) {
+  const marks = [], ap = R.ap.code;
+  const success = tookOff(ev) && ev.safe && legalMass(R);
+  if (success) {
+    marks.push(`wind:${ap}:${windBand(R.inp.wind)}`);
+    marks.push(`rwy:${ap}:${R.inp.rwy}`);
+    const rem = R.ap.tora - liftoffX(R, ev);
+    if (rem >= 0 && rem <= CLOSE_CALL_M) marks.push(`close:${ap}`);
+  }
+  if (tookOff(ev) && !ev.safe) marks.push(`fail:${ap}`);
+  if ((ev.kind === 'fail-go' || ev.kind === 'fail-stop') && ev.safe && ev.correct) marks.push('oei_ok');
+  return marks;
 }
 
-// 레벨: L 레벨이 되려면 누적 50·L·(L−1) XP (2레벨 100, 3레벨 300, 4레벨 600 …)
-export const xpForLevel = L => 50 * L * (L - 1);
-export const levelFor = xp => Math.max(1, Math.floor((1 + Math.sqrt(1 + 8 * xp / 100)) / 2));
-export const rankName = L => (L >= 20 ? '교관 기장' : L >= 12 ? '선임 기장' : L >= 8 ? '기장' : L >= 5 ? '부기장' : L >= 3 ? '부기장 후보' : '훈련생');
-export const DAILY_XP_CAP = 500;
+// 진행도: progress = { key: 횟수 }
+const countPrefix = (pr, prefix) => Object.keys(pr).filter(k => k.startsWith(prefix) && pr[k] > 0).length;
+// 윈드 마스터: 6개 풍속 구간을 모두 채운 공항 수
+export const windDoneAirports = pr => AIRPORTS.filter(a => WIND_BANDS.every(b => pr[`wind:${a.code}:${b}`] > 0)).length;
+// 전천후: 4가지 활주로 상태에서 모두 이륙 성공한 공항 수
+export const rwyDoneAirports = pr => AIRPORTS.filter(a => Object.keys(RUNWAY).every(k => pr[`rwy:${a.code}:${k}`] > 0)).length;
+
+const ROMAN = ['I', 'II', 'III', 'IV'];
+const AIRPORT_TIERS = [1, 4, 7, 11];
+// 같은 종류의 업적을 4단계로 만들기
+const series = (id, name, goals, current, unit, desc) => goals.map((g, i) => ({
+  key: `${id}_${g}`, series: id, seriesName: name, tier: i + 1,
+  name: `${name} ${ROMAN[i]}`, goal: g, current, unit, desc: desc(g),
+}));
+
+export const ACHIEVEMENTS = [
+  ...series('wind', '윈드 마스터', AIRPORT_TIERS, windDoneAirports, '곳',
+    g => `${g === 11 ? '모든 공항' : `공항 ${g}곳`}에서 풍속 ${WIND_BANDS.join('·')} m/s 구간마다 이륙 성공`),
+  ...series('rwy', '전천후', AIRPORT_TIERS, rwyDoneAirports, '곳',
+    g => `${g === 11 ? '모든 공항' : `공항 ${g}곳`}에서 건조·젖음·눈·결빙 활주로 모두 이륙 성공`),
+  ...series('oei', '변수 제거', [1, 10, 50, 100], pr => pr.oei_ok || 0, '회',
+    g => `엔진 고장에 정석대로 대처해서 무사히 끝내기 ${g}회`),
+  ...series('close', '아슬아슬', AIRPORT_TIERS, pr => countPrefix(pr, 'close:'), '곳',
+    g => `${g === 11 ? '모든 공항' : `공항 ${g}곳`}에서 활주로를 ${CLOSE_CALL_M} m 이내로 남기고 이륙 성공`),
+  ...series('fail', '실패는 성공의 어머니', AIRPORT_TIERS, pr => countPrefix(pr, 'fail:'), '곳',
+    g => `${g === 11 ? '모든 공항' : `공항 ${g}곳`}에서 이륙 실패 겪어 보기`),
+];
+export const ACHIEVEMENT_SERIES = [...new Set(ACHIEVEMENTS.map(a => a.series))];
+export const achieved = pr => ACHIEVEMENTS.filter(a => a.current(pr) >= a.goal).map(a => a.key);
