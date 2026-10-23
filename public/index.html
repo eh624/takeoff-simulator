@@ -65,6 +65,14 @@ header p { margin: 0; color: var(--muted); max-width: 60ch; }
 .controls { padding: 18px; display: flex; flex-direction: column; gap: 18px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field > label, .legend { font-size: .78rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+.lrow { display: flex; align-items: center; gap: 8px; }
+.lrow label { white-space: nowrap; font-size: .78rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-right: auto; }
+.hintout { font-family: var(--mono); font-size: .75rem; color: var(--muted); white-space: nowrap; }
+.numwrap { flex: none; display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); padding-right: 6px; }
+.numwrap:focus-within { border-color: var(--trace); box-shadow: 0 0 0 2px color-mix(in srgb, var(--trace) 25%, transparent); }
+.numwrap input[type=number] { width: 62px; flex: none; border-radius: 4px 0 0 4px; border: 0; background: transparent; color: var(--ink); font-family: var(--mono); font-size: .9rem; padding: 5px 6px; text-align: right; outline: none; -moz-appearance: textfield; }
+.numwrap input::-webkit-outer-spin-button, .numwrap input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.numwrap .unit { font-size: .78rem; color: var(--muted); }
 .field output, .val { font-family: var(--mono); color: var(--ink); text-transform: none; letter-spacing: 0; font-size: .85rem; }
 select, input[type=number] {
   font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; width: 100%;
@@ -342,8 +350,8 @@ button.wide { width: 100%; padding: 12px; font-size: .95rem; border-radius: 6px;
         <div class="spec" id="apSpec"></div>
       </div>
       <div class="field">
-        <label for="mass">이륙 중량 <output id="massOut"></output></label>
-        <input type="range" id="mass" step="1">
+        <div class="lrow"><label for="mass">이륙 중량</label><span class="numwrap"><input type="number" id="massNum" inputmode="decimal" aria-label="이륙 중량 (t)"><span class="unit">t</span></span></div>
+        <input type="range" id="mass" step="0.1">
         <div class="warnline" id="massWarn" hidden></div>
       </div>
       <div class="field">
@@ -351,18 +359,18 @@ button.wide { width: 100%; padding: 12px; font-size: .95rem; border-radius: 6px;
         <div class="seg" id="rwy"></div>
       </div>
       <div class="field">
-        <label for="oat">기온 <output id="oatOut"></output></label>
+        <div class="lrow"><label for="oat">기온</label><span class="numwrap"><input type="number" id="oatNum" inputmode="decimal" aria-label="기온 (°C)"><span class="unit">°C</span></span></div>
         <input type="range" id="oat" min="-30" max="45" step="1" value="15">
       </div>
       <div class="windrow">
         <div style="display:flex;flex-direction:column;gap:12px">
           <div class="field">
-            <label for="wind">풍속 <output id="windOut"></output></label>
-            <input type="range" id="wind" min="0" max="25" step="0.5" value="5">
+            <div class="lrow"><label for="wind">풍속</label><output id="windOut" class="hintout"></output><span class="numwrap"><input type="number" id="windNum" inputmode="decimal" aria-label="풍속 (m/s)"><span class="unit">m/s</span></span></div>
+            <input type="range" id="wind" min="0" max="25" step="0.1" value="5">
           </div>
           <div class="field">
-            <label for="wdir">풍향 <output id="wdirOut"></output></label>
-            <input type="range" id="wdir" min="0" max="355" step="5" value="0">
+            <div class="lrow"><label for="wdir">풍향</label><output id="wdirOut" class="hintout"></output><span class="numwrap"><input type="number" id="wdirNum" inputmode="decimal" aria-label="풍향 (°)"><span class="unit">°</span></span></div>
+            <input type="range" id="wdir" min="0" max="359" step="1" value="0">
           </div>
         </div>
         <svg id="dial" viewBox="0 0 84 84" role="img" aria-label="활주로 기준 바람 방향"></svg>

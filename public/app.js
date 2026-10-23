@@ -435,12 +435,12 @@ function showResults() {
 function syncLabels() {
   const inp = readInputs();
   const ac = AIRCRAFT.find(a => a.id === inp.ac), ap = AIRPORTS.find(a => a.code === inp.ap);
-  $('massOut').textContent = `${inp.mass} t`;
-  $('oatOut').textContent = `${inp.oat} °C`;
-  $('windOut').textContent = `${inp.wind} m/s (${Math.round(inp.wind * KT)} kt)`;
+  // 숫자 칸은 직접 입력 중이 아닐 때만 슬라이더 값으로 맞춤
+  for (const id of ['mass', 'oat', 'wind', 'wdir']) { const n = $(id + 'Num'); if (document.activeElement !== n) n.value = $(id).value; }
+  $('windOut').textContent = `${Math.round(inp.wind * KT)} kt`;
   const d = inp.wdir;
   const rel = d === 0 ? '정풍' : d === 180 ? '배풍' : (d < 90 || d > 270) ? '정풍 성분' : d === 90 || d === 270 ? '측풍' : '배풍 성분';
-  $('wdirOut').textContent = `${d}° · ${rel}`;
+  $('wdirOut').textContent = rel;
   $('apSpec').textContent = `활주로 ${fmt(ap.tora)} m · 표고 ${fmt(ap.alt)} ft`;
   const mw = $('massWarn');
   if (inp.mass * 1000 > ac.mtow) { mw.hidden = false; mw.textContent = `최대 이륙 중량보다 ${fmt(inp.mass - ac.mtow / 1000, 1)} t 무겁습니다.`; }
@@ -591,6 +591,21 @@ $('failForce').addEventListener('change', () => showXpPreview());
 $('dStop').addEventListener('click', () => choose('stop'));
 $('ac').addEventListener('change', () => { setAircraftRange(false); recompute(); });
 ['ap', 'mass', 'oat', 'wind', 'wdir'].forEach(id => $(id).addEventListener('input', recompute));
+// 숫자 직접 입력: 범위 안으로 맞추고 슬라이더에 반영 (Enter 또는 칸을 벗어날 때)
+['mass', 'oat', 'wind', 'wdir'].forEach(id => {
+  const n = $(id + 'Num'), r = $(id);
+  const apply = () => {
+    let v = parseFloat(String(n.value).replace(',', '.'));
+    if (!Number.isFinite(v)) { n.value = r.value; return; }
+    if (id === 'wdir') v = ((Math.round(v) % 360) + 360) % 360;
+    v = Math.min(+r.max, Math.max(+r.min, v));
+    r.value = v; n.value = r.value;
+    recompute();
+  };
+  n.addEventListener('change', apply);
+  n.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); apply(); n.select(); } });
+  n.addEventListener('focus', () => n.select());
+});
 $('rwy').addEventListener('change', recompute);
 $('form').addEventListener('submit', e => e.preventDefault());
 
