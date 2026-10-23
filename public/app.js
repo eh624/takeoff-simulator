@@ -544,7 +544,7 @@ async function initAuth() {
   } catch { return; }   // 서버 없이 열면 로그인 없이 시뮬레이터만 동작
   sb = window.supabase.createClient(cfg.supabaseUrl, cfg.anonKey);
   $('account').hidden = false;
-  ['google', 'naver', 'apple'].forEach(p => { $('login-' + p).hidden = !cfg.providers?.[p]; });
+  ['kakao', 'google', 'naver', 'apple'].forEach(p => { $('login-' + p).hidden = !cfg.providers?.[p]; });
 
   const q = new URLSearchParams(location.search);
   if (q.get('token_hash')) {        // 네이버 로그인에서 돌아옴
@@ -594,6 +594,7 @@ $('pwSignup').addEventListener('click', async () => {
 
 const oauth = provider => sb.auth.signInWithOAuth({ provider, options: { redirectTo: location.origin + location.pathname } });
 $('loginBtn').addEventListener('click', () => { $('loginBox').hidden = !$('loginBox').hidden; });
+$('login-kakao').addEventListener('click', () => oauth('kakao'));
 $('login-google').addEventListener('click', () => oauth('google'));
 $('login-apple').addEventListener('click', () => oauth('apple'));
 $('login-naver').addEventListener('click', () => { location.href = '/auth/naver/login'; });

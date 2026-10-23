@@ -6,6 +6,7 @@ export function onRequestGet({ env }) {
     supabaseUrl: env.SUPABASE_URL,
     anonKey: env.SUPABASE_ANON_KEY,
     providers: {
+      kakao: env.ENABLE_KAKAO === 'true',     // Supabase에서 Kakao를 켠 뒤 true로
       google: env.ENABLE_GOOGLE === 'true',   // Supabase에서 Google을 켠 뒤 true로
       apple: env.ENABLE_APPLE === 'true',
       naver: Boolean(env.NAVER_CLIENT_ID && env.NAVER_CLIENT_SECRET),
