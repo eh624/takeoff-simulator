@@ -1,0 +1,8 @@
+# 로컬 개발용: 이 파일을 .dev.vars 로 복사해서 값을 채우세요 (깃에 올리지 마세요)
+SUPABASE_URL=https://xxxxxxxx.supabase.co
+SUPABASE_ANON_KEY=여기에_anon_또는_publishable_키
+SUPABASE_SERVICE_ROLE_KEY=여기에_service_role_또는_secret_키
+NAVER_CLIENT_ID=
+NAVER_CLIENT_SECRET=
+# Apple 로그인 설정을 마쳤으면 true
+ENABLE_APPLE=false
