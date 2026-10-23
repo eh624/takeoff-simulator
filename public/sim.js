@@ -3,13 +3,13 @@ export const fmt = (n, d = 0) => n.toLocaleString('ko-KR', { minimumFractionDigi
 
 // ===== 데이터 =====
 export const AIRCRAFT = [
-  { id: 'a350', name: 'Airbus A350-900',  mtow: 280000, S: 443,   ar: 9.49, thrust: 374500, n: 2, eng: 'Trent XWB-84', clmax: 2.3, cd0: 0.024, e: 0.8 },
-  { id: 'b77w', name: 'Boeing 777-300ER', mtow: 351535, S: 436.8, ar: 8.67, thrust: 513000, n: 2, eng: 'GE90-115B',   clmax: 2.3, cd0: 0.025, e: 0.8 },
-  { id: 'b789', name: 'Boeing 787-9',     mtow: 254011, S: 377,   ar: 9.59, thrust: 340000, n: 2, eng: 'GEnx-1B / Trent 1000', clmax: 2.3, cd0: 0.024, e: 0.8 },
-  { id: 'a388', name: 'Airbus A380-800',  mtow: 575000, S: 845,   ar: 7.53, thrust: 311000, n: 4, eng: 'Trent 970',   clmax: 2.3, cd0: 0.025, e: 0.8 },
-  { id: 'b748', name: 'Boeing 747-8',     mtow: 447696, S: 554,   ar: 8.45, thrust: 296000, n: 4, eng: 'GEnx-2B',     clmax: 2.2, cd0: 0.025, e: 0.8 },
-  { id: 'a21n', name: 'Airbus A321neo',   mtow: 97000,  S: 122.6, ar: 10.4, thrust: 147000, n: 2, eng: 'LEAP-1A',     clmax: 2.4, cd0: 0.023, e: 0.8 },
-  { id: 'b38m', name: 'Boeing 737-8',     mtow: 82191,  S: 127,   ar: 10.2, thrust: 130000, n: 2, eng: 'LEAP-1B',     clmax: 2.4, cd0: 0.023, e: 0.8 },
+  { id: 'a350', short: 'A350', body: 'wide', role: '장거리', name: 'Airbus A350-900',  mtow: 280000, S: 443,   ar: 9.49, thrust: 374500, n: 2, eng: 'Trent XWB-84', clmax: 2.3, cd0: 0.024, e: 0.8 },
+  { id: 'b77w', short: '777', body: 'wide', role: '장거리', name: 'Boeing 777-300ER', mtow: 351535, S: 436.8, ar: 8.67, thrust: 513000, n: 2, eng: 'GE90-115B',   clmax: 2.3, cd0: 0.025, e: 0.8 },
+  { id: 'b789', short: '787', body: 'wide', role: '장거리', name: 'Boeing 787-9',     mtow: 254011, S: 377,   ar: 9.59, thrust: 340000, n: 2, eng: 'GEnx-1B / Trent 1000', clmax: 2.3, cd0: 0.024, e: 0.8 },
+  { id: 'a388', short: 'A380', body: 'wide', role: '초대형 장거리', name: 'Airbus A380-800',  mtow: 575000, S: 845,   ar: 7.53, thrust: 311000, n: 4, eng: 'Trent 970',   clmax: 2.3, cd0: 0.025, e: 0.8 },
+  { id: 'b748', short: '747', body: 'wide', role: '초대형 장거리', name: 'Boeing 747-8',     mtow: 447696, S: 554,   ar: 8.45, thrust: 296000, n: 4, eng: 'GEnx-2B',     clmax: 2.2, cd0: 0.025, e: 0.8 },
+  { id: 'a21n', short: 'A321', body: 'narrow', role: '단·중거리', name: 'Airbus A321neo',   mtow: 97000,  S: 122.6, ar: 10.4, thrust: 147000, n: 2, eng: 'LEAP-1A',     clmax: 2.4, cd0: 0.023, e: 0.8 },
+  { id: 'b38m', short: '737', body: 'narrow', role: '단·중거리', name: 'Boeing 737-8',     mtow: 82191,  S: 127,   ar: 10.2, thrust: 130000, n: 2, eng: 'LEAP-1B',     clmax: 2.4, cd0: 0.023, e: 0.8 },
 ];
 export const AIRPORTS = [
   { code: 'ICN', name: '인천',      tora: 3700, alt: 23 },
@@ -273,7 +273,11 @@ export function flightMarks(R, ev) {
     if (rem >= 0 && rem <= CLOSE_CALL_M) marks.push(`close:${ap}`);
   }
   if (tookOff(ev) && !ev.safe) marks.push(`fail:${ap}`);
-  if ((ev.kind === 'fail-go' || ev.kind === 'fail-stop') && ev.safe && ev.correct) marks.push('oei_ok');
+  if ((ev.kind === 'fail-go' || ev.kind === 'fail-stop') && ev.safe && ev.correct) {
+    marks.push('oei_ok');
+    marks.push(`type_oei:${R.ac.id}`);           // 형식 한정: 이 기종으로 엔진 고장 대처
+  }
+  if (success) marks.push(`type_to:${R.ac.id}`); // 형식 한정: 이 기종으로 이륙 성공
   return marks;
 }
 
@@ -284,6 +288,10 @@ export const windDoneAirports = pr => AIRPORTS.filter(a => WIND_BANDS.every(b =>
 // 전천후: 4가지 활주로 상태에서 모두 이륙 성공한 공항 수
 // 기온 마스터: 6개 기온 구간을 모두 채운 공항 수
 export const tempDoneAirports = pr => AIRPORTS.filter(a => TEMP_BANDS.every(b => pr[`temp:${a.code}:${b}`] > 0)).length;
+// 형식 한정: 이륙 성공 + 엔진 고장 정석 대처를 둘 다 해낸 기종 수
+export const typeRated = pr => AIRCRAFT.filter(a => pr[`type_to:${a.id}`] > 0 && pr[`type_oei:${a.id}`] > 0).length;
+export const engineLabel = a => (a.n === 2 ? '쌍발' : a.n === 4 ? '4발' : `${a.n}발`);
+export const bodyLabel = a => (a.body === 'wide' ? '광동체' : '협동체');
 export const rwyDoneAirports = pr => AIRPORTS.filter(a => Object.keys(RUNWAY).every(k => pr[`rwy:${a.code}:${k}`] > 0)).length;
 
 const ROMAN = ['I', 'II', 'III', 'IV'];
@@ -301,6 +309,8 @@ export const ACHIEVEMENTS = [
     g => `${g === 11 ? '모든 공항' : `공항 ${g}곳`}에서 기온 ${TEMP_BANDS.map(t => String(t).replace('-', '−')).join('·')} °C 구간마다 이륙 성공`),
   ...series('rwy', '전천후', AIRPORT_TIERS, rwyDoneAirports, '곳',
     g => `${g === 11 ? '모든 공항' : `공항 ${g}곳`}에서 건조·젖음·눈·결빙 활주로 모두 이륙 성공`),
+  ...series('type', '형식 한정', [1, 3, 5, 7], typeRated, '기종',
+    g => `${g === 7 ? '모든 기종' : `기종 ${g}개`}에서 이륙 성공과 엔진 고장 정석 대처를 둘 다 해내기`),
   ...series('oei', '변수 제거', [1, 10, 50, 100], pr => pr.oei_ok || 0, '회',
     g => `엔진 고장에 정석대로 대처해서 무사히 끝내기 ${g}회`),
   ...series('close', '아슬아슬', AIRPORT_TIERS, pr => countPrefix(pr, 'close:'), '곳',

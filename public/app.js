@@ -1,10 +1,15 @@
-import { AIRCRAFT, AIRPORTS, RUNWAY, P, KT, compute, fmt, failIdxFor, pickFailVa, evaluateFlight, flightMarks, ACHIEVEMENTS, ACHIEVEMENT_SERIES, WIND_BANDS, windBand, TEMP_BANDS, tempBand, CLOSE_CALL_M } from './sim.js';
+import { engineLabel, bodyLabel, AIRCRAFT, AIRPORTS, RUNWAY, P, KT, compute, fmt, failIdxFor, pickFailVa, evaluateFlight, flightMarks, ACHIEVEMENTS, ACHIEVEMENT_SERIES, WIND_BANDS, windBand, TEMP_BANDS, tempBand, CLOSE_CALL_M } from './sim.js';
 
 const $ = id => document.getElementById(id);
 let progress = {};          // 업적 진행 기록 (key → 횟수)
 let myAch = new Set();      // 달성한 업적
 const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-AIRCRAFT.forEach(a => $('ac').add(new Option(a.name, a.id)));
+// 기종 선택: 엔진 수·동체로 묶어서 보여 줌
+[['쌍발 광동체', a => a.n === 2 && a.body === 'wide'], ['4발 광동체', a => a.n === 4], ['쌍발 협동체', a => a.n === 2 && a.body === 'narrow']].forEach(([label, f]) => {
+  const g = document.createElement('optgroup'); g.label = label;
+  AIRCRAFT.filter(f).forEach(a => g.append(new Option(`${a.name} · ${engineLabel(a)}`, a.id)));
+  $('ac').append(g);
+});
 AIRPORTS.forEach(a => $('ap').add(new Option(`${a.code} · ${a.name}`, a.code)));
 Object.entries(RUNWAY).forEach(([k, r], i) => {
   $('rwy').insertAdjacentHTML('beforeend',
@@ -17,7 +22,11 @@ function setAircraftRange(keepValue) {
   s.min = Math.round(ac.mtow * 0.5 / 1000);
   s.max = Math.round(ac.mtow * 1.05 / 1000);
   if (!keepValue) s.value = Math.round(ac.mtow * 0.9 / 1000);
-  $('acSpec').textContent = `MTOW ${fmt(ac.mtow / 1000, 1)} t · ${ac.eng} ×${ac.n} · 날개 ${fmt(ac.S, 1)} m²`;
+  const tw = (ac.thrust * ac.n) / (ac.mtow * 9.81);
+  const left = Math.round((ac.n - 1) / ac.n * 100);
+  $('acSpec').innerHTML = `<span class="tag">${engineLabel(ac)}</span><span class="tag">${bodyLabel(ac)}</span><span class="tag">${ac.role}</span><br>`
+    + `MTOW ${fmt(ac.mtow / 1000, 1)} t · ${esc(ac.eng)} ×${ac.n} · 날개 ${fmt(ac.S, 1)} m²<br>`
+    + `추력/무게 ${tw.toFixed(2)} (최대 중량) · 엔진 1개 고장 시 추력 ${left}%`;
 }
 $('ac').value = 'a350';
 setAircraftRange(false);
@@ -292,6 +301,8 @@ function showXpPreview() {
   const chip = (txt, isNew) => `<span class="chip${isNew ? ' new' : ''}">${isNew ? '★ ' : '✓ '}${esc(txt)}</span>`;
   const wkey = `wind:${ap}:${windBand(R.inp.wind)}`;
   if (marks.includes(wkey)) chips.push(chip(`윈드 마스터 · ${ap} ${windBand(R.inp.wind)} m/s 칸`, !progress[wkey]));
+  const tokey = `type_to:${R.ac.id}`;
+  if (marks.includes(tokey)) chips.push(chip(`형식 한정 · ${R.ac.short} 이륙`, !progress[tokey]));
   const tkey = `temp:${ap}:${tempBand(R.inp.oat)}`;
   if (marks.includes(tkey)) chips.push(chip(`기온 마스터 · ${ap} ${tempBand(R.inp.oat)} °C 칸`, !progress[tkey]));
   const rkey = `rwy:${ap}:${R.inp.rwy}`;
@@ -304,8 +315,8 @@ function showXpPreview() {
   const head = chips.some(c => c.includes(' new'))
     ? '<span class="total">새 진행!</span>' : '<span class="total zero">이번 조건</span>';
   const practice = $('failForce').checked
-    ? '<span class="bonus">엔진 고장 연습: 정석대로 대처해서 무사히 끝내면 "변수 제거" +1</span>'
-    : '<span class="bonus">엔진이 고장 나면 정석대로 대처할 때 "변수 제거" +1</span>';
+    ? `<span class="bonus">엔진 고장 연습: 정석대로 대처해서 무사히 끝내면 "변수 제거" +1${progress[`type_oei:${R.ac.id}`] ? '' : `, "형식 한정 · ${R.ac.short}" 엔진 고장 대처 완료`}</span>`
+    : `<span class="bonus">엔진이 고장 나면 정석대로 대처할 때 "변수 제거" +1${progress[`type_oei:${R.ac.id}`] ? '' : `, "형식 한정 · ${R.ac.short}" 진행`}</span>`;
   box.innerHTML = head + (chips.join('') || '<span class="lbl">이 조건으로는 진행되는 업적이 없어요</span>') + remLine + penalty + practice;
 }
 
@@ -630,6 +641,8 @@ async function report() {
       const [kind, ap, band] = m.split(':');
       const isNew = !before[m];
       const label = kind === 'wind' ? `윈드 마스터 · ${ap} ${band} m/s 칸`
+        : kind === 'type_to' ? `형식 한정 · ${AIRCRAFT.find(a => a.id === ap)?.short ?? ap} 이륙`
+        : kind === 'type_oei' ? `형식 한정 · ${AIRCRAFT.find(a => a.id === ap)?.short ?? ap} 엔진 고장 대처`
         : kind === 'temp' ? `기온 마스터 · ${ap} ${band} °C 칸`
         : kind === 'rwy' ? `전천후 · ${ap} ${RUNWAY[band]?.label ?? band} 활주로`
         : kind === 'close' ? `아슬아슬 · ${ap} (남은 활주로 ${fmt(r.remaining)} m)`
@@ -702,7 +715,11 @@ function renderAchievements() {
   const rwyKeys = Object.keys(RUNWAY);
   const windGrid = grid('wind:', WIND_BANDS, WIND_BANDS, '한 공항의 6칸(풍속 구간, m/s)을 모두 채우면 1곳 완성');
   const rwyGrid = grid('rwy:', rwyKeys, rwyKeys.map(k => RUNWAY[k].label), '한 공항에서 4가지 활주로 상태를 모두 채우면 1곳 완성');
-  const extraFor = { wind: windGrid, temp: tempGrid, rwy: rwyGrid, close: apChips('close:'), fail: apChips('fail:') };
+  const typeChips = `<div class="apgrid typegrid">${AIRCRAFT.map(a => {
+      const t = progress[`type_to:${a.id}`] > 0, o = progress[`type_oei:${a.id}`] > 0;
+      return `<span class="${t && o ? 'on' : t || o ? 'half' : ''}" title="${esc(a.name)} · 이륙 ${t ? '✓' : '—'} · 엔진 고장 대처 ${o ? '✓' : '—'}">${esc(a.short)} <small>${t ? '✈' : '·'}${o ? '⚙' : '·'}</small></span>`;
+    }).join('')}</div><p class="muted">✈ 이륙 성공 · ⚙ 엔진 고장 정석 대처 · 둘 다 하면 자격 취득</p>`;
+  const extraFor = { type: typeChips, wind: windGrid, temp: tempGrid, rwy: rwyGrid, close: apChips('close:'), fail: apChips('fail:') };
   $('achList').innerHTML = ACHIEVEMENT_SERIES.map(id => {
     const tiers = ACHIEVEMENTS.filter(a => a.series === id);
     const cur = tiers[0].current(progress);

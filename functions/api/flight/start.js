@@ -2,7 +2,19 @@
 import { compute, validateInputs, pickFailVa, P } from '../../../public/sim.js';
 import { getUser, db, json } from '../../../lib/sb.js';
 
-export async function onRequestPost({ request, env }) {
+export async function onRequestPost(ctx) {
+  try {
+    return await handle(ctx);
+  } catch (e) {
+    // 원인을 화면에 보여 주기 (DB 함수가 없을 때 등)
+    const msg = String(e?.data?.message || e?.message || e);
+    const hint = /record_flight|grant_achievements|achievements|progress/.test(msg)
+      ? ' Supabase SQL Editor에서 업적 SQL(20261023230000_achievements.sql)을 실행했는지 확인하세요.' : '';
+    return json({ error: `서버 오류: ${msg}.${hint}` }, 500);
+  }
+}
+
+async function handle({ request, env }) {
   const user = await getUser(request, env);
   if (!user) return json({ error: '로그인이 필요합니다.' }, 401);
 
