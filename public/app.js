@@ -401,13 +401,44 @@ function renderCompare() {
     out.push(['결과', `${A.result === 'liftoff' ? '이륙' : '실패'} → ${B.result === 'liftoff' ? '이륙' : '실패'}`]);
   }
   // 왜?
+  // 조건별 영향: 이전 조건에서 그 조건 하나만 바꿔서 다시 계산
+  const factors = [];
+  if (A.ac.id !== B.ac.id) factors.push({ name: '기종·중량', keys: ['ac', 'mass'] });   // 기종이 바뀌면 중량 범위도 바뀌므로 함께
+  else if (A.inp.mass !== B.inp.mass) factors.push({ name: '중량', keys: ['mass'] });
+  if (A.ap.code !== B.ap.code) factors.push({ name: '공항', keys: ['ap'] });
+  if (A.inp.oat !== B.inp.oat) factors.push({ name: '기온', keys: ['oat'] });
+  if (A.inp.rwy !== B.inp.rwy) factors.push({ name: '활주로 상태', keys: ['rwy'] });
+  if (A.inp.wind !== B.inp.wind || A.inp.wdir !== B.inp.wdir) factors.push({ name: '바람', keys: ['wind', 'wdir'] });
+  const isolated = {};
+  for (const f of factors) {
+    const inp = { ...A.inp };
+    for (const k of f.keys) inp[k] = B.inp[k];
+    const Rf = compute(inp);
+    isolated[f.name] = Rf.result === 'liftoff' && A.result === 'liftoff' ? Rf.xLof - A.xLof : null;
+  }
+  const signed = v => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${fmt(Math.abs(v))} m`;
+  let split = '';
+  if (both && factors.length > 1 && factors.every(f => isolated[f.name] != null)) {
+    const total = B.xLof - A.xLof;
+    const sum = factors.reduce((t, f) => t + isolated[f.name], 0);
+    const rest = total - sum;
+    split = `<div class="csplit"><span class="ctitle2">활주 거리 변화 나누기</span><ul>`
+      + factors.map(f => `<li><span>${esc(f.name)}만 바꾸면</span><b class="${isolated[f.name] > 0.5 ? 'up' : isolated[f.name] < -0.5 ? 'down' : 'same'}">${signed(isolated[f.name])}</b></li>`).join('')
+      + (Math.abs(rest) >= 5 ? `<li><span>함께 바뀌어서 생긴 차이</span><b class="same">${signed(rest)}</b></li>` : '')
+      + `<li class="tot"><span>합계</span><b>${signed(total)}</b></li></ul></div>`;
+  }
+
   const why = [];
   const rhoPct = Math.round((B.rho / A.rho - 1) * 100);
   if ((A.inp.oat !== B.inp.oat || A.ap.alt !== B.ap.alt) && rhoPct !== 0)
     why.push(`공기 밀도가 ${rhoPct > 0 ? '+' : '−'}${Math.abs(rhoPct)}% 변했어요. 공기가 ${rhoPct < 0 ? '희박해지면' : '진해지면'} 같은 양력을 얻는 데 필요한 대기 속도가 ${rhoPct < 0 ? '빨라지고' : '느려지고'}(밀도의 제곱근에 반비례), 엔진 추력도 ${rhoPct < 0 ? '줄어요' : '늘어요'}.`);
   if (A.inp.mass !== B.inp.mass && A.ac.id === B.ac.id) {
     const m = B.inp.mass / A.inp.mass;
-    why.push(`무게가 ${m > 1 ? '+' : '−'}${Math.round(Math.abs(m - 1) * 100)}%면 부양 속도는 무게의 제곱근만큼(약 ${m > 1 ? '+' : '−'}${Math.round(Math.abs(Math.sqrt(m) - 1) * 100)}%) 바뀌지만, 가속도 같이 ${m > 1 ? '느려져서' : '빨라져서'} 활주 거리는 무게의 거의 제곱으로(약 ${m > 1 ? '+' : '−'}${Math.round(Math.abs(m * m - 1) * 100)}%) 바뀝니다.`);
+    const pct = v => `${v > 0 ? '+' : '−'}${Math.round(Math.abs(v) * 100)}%`;
+    const real = isolated['중량'] != null ? isolated['중량'] / A.xLof : null;
+    why.push(`무게가 ${pct(m - 1)}면 부양 속도는 무게의 제곱근만큼(약 ${pct(Math.sqrt(m) - 1)}) 바뀌고, 가속도 같이 ${m > 1 ? '느려져서' : '빨라져서'} 활주 거리는 단순 계산으로 무게의 제곱(약 ${pct(m * m - 1)}) 바뀝니다.`
+      + (real != null && Math.round(real * 100) === Math.round((m * m - 1) * 100) ? ` 실제 계산도 ${pct(real)}로 거의 같아요.` : '')
+      + (real != null && Math.round(real * 100) !== Math.round((m * m - 1) * 100) ? ` 실제 계산은 ${pct(real)}: ${m > 1 ? '더 빨리 달려야 해서 공기 저항이 커지고 엔진 추력이 줄어 조금 더 늘어나요' : '덜 빨리 달려도 돼서 공기 저항이 줄고 추력이 남아 조금 더 줄어요'}.` : ''));
   }
   if (Math.abs(A.Vw - B.Vw) > 0.05)
     why.push(`정풍은 처음부터 날개에 바람을 불어 줍니다. 부양에 필요한 대기 속도는 그대로지만, 정풍이 ${B.Vw > A.Vw ? '세지면' : '약해지면'} 땅 위에서 달려야 할 속도가 ${B.Vw > A.Vw ? '줄어서' : '늘어서'} 활주 거리가 ${B.Vw > A.Vw ? '짧아져요' : '길어져요'}.`);
@@ -420,10 +451,11 @@ function renderCompare() {
     why.push(`추력 ÷ 무게가 ${tw(A).toFixed(2)} → ${tw(B).toFixed(2)}, 실속 속도가 ${kt(A.Vs)} → ${kt(B.Vs)} kt로 바뀌었어요. 추력 대비 무게가 가벼울수록, 날개가 넓을수록 짧게 뜹니다.`);
   }
   if (A.ap.code !== B.ap.code && A.ap.tora !== B.ap.tora)
-    why.push(`활주로 길이가 ${fmt(A.ap.tora)} → ${fmt(B.ap.tora)} m로 바뀌면 이륙 거리는 그대로여도 V1과 규정 판정이 달라집니다.`);
+    why.push(`활주로 길이가 ${fmt(A.ap.tora)} → ${fmt(B.ap.tora)} m로 바뀌었어요. 활주로 길이는 활주 거리 자체를 바꾸지 않고, V1과 규정 판정(남는 거리)에 영향을 줍니다.`);
   box.innerHTML = `<span class="ctitle">이전 비행과 비교</span>
     <p class="cchg">${ch.map(esc).join(' · ')}</p>
     <dl class="cout">${out.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
+    ${split}
     ${why.length ? `<ul class="cwhy">${why.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}`;
 }
 
