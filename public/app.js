@@ -336,11 +336,11 @@ function showXpPreview() {
   const marks = flightMarks(R, ev);
   const chip = (txt, isNew) => `<span class="chip${isNew ? ' new' : ''}">${isNew ? '★ ' : '✓ '}${esc(txt)}</span>`;
   const wkey = `wind:${ap}:${windBand(R.inp.wind)}`;
-  if (marks.includes(wkey)) chips.push(chip(`윈드 마스터 · ${ap} ${windBand(R.inp.wind)} m/s 칸`, !progress[wkey]));
+  if (marks.includes(wkey)) chips.push(chip(`윈드 마스터 · ${ap} ${windBand(R.inp.wind)} m/s`, !progress[wkey]));
   const tokey = `type_to:${R.ac.id}`;
   if (marks.includes(tokey)) chips.push(chip(`형식 한정 · ${R.ac.short} 이륙`, !progress[tokey]));
   const tkey = `temp:${ap}:${tempBand(R.inp.oat)}`;
-  if (marks.includes(tkey)) chips.push(chip(`기온 마스터 · ${ap} ${tempBand(R.inp.oat)} °C 칸`, !progress[tkey]));
+  if (marks.includes(tkey)) chips.push(chip(`기온 마스터 · ${ap} ${tempBand(R.inp.oat)} °C`, !progress[tkey]));
   const rkey = `rwy:${ap}:${R.inp.rwy}`;
   if (marks.includes(rkey)) chips.push(chip(`전천후 · ${ap} ${R.rw.label}`, !progress[rkey]));
   if (marks.includes(`close:${ap}`)) chips.push(chip(`아슬아슬 · ${ap}`, !progress[`close:${ap}`]));
@@ -691,10 +691,10 @@ async function report() {
     for (const m of r.marks || []) {
       const [kind, ap, band] = m.split(':');
       const isNew = !before[m];
-      const label = kind === 'wind' ? `윈드 마스터 · ${ap} ${band} m/s 칸`
+      const label = kind === 'wind' ? `윈드 마스터 · ${ap} ${band} m/s`
         : kind === 'type_to' ? `형식 한정 · ${AIRCRAFT.find(a => a.id === ap)?.short ?? ap} 이륙`
         : kind === 'type_oei' ? `형식 한정 · ${AIRCRAFT.find(a => a.id === ap)?.short ?? ap} 엔진 고장 대처`
-        : kind === 'temp' ? `기온 마스터 · ${ap} ${band} °C 칸`
+        : kind === 'temp' ? `기온 마스터 · ${ap} ${band} °C`
         : kind === 'rwy' ? `전천후 · ${ap} ${RUNWAY[band]?.label ?? band} 활주로`
         : kind === 'close' ? `아슬아슬 · ${ap} (남은 활주로 ${fmt(r.remaining)} m)`
         : kind === 'fail' ? `실패는 성공의 어머니 · ${ap}`
