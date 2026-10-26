@@ -332,6 +332,10 @@ function showXpPreview() {
     box.innerHTML = `<span class="total zero">이륙 금지</span><span class="lbl">${esc(R.text)}</span>`;
     return;
   }
+  if ($('failForce').checked) {
+    box.innerHTML = '<span class="total zero">연습 비행</span><span class="lbl">엔진 고장 연습은 업적에 기록되지 않아요. 체크를 끄면 정식 비행이 됩니다.</span>' + penalty;
+    return;
+  }
   const ev = evaluateFlight(R);
   const marks = flightMarks(R, ev);
   const chip = (txt, isNew) => `<span class="chip${isNew ? ' new' : ''}">${isNew ? '★ ' : '✔️ '}${esc(txt)}</span>`;
@@ -350,10 +354,8 @@ function showXpPreview() {
     ? `<span class="lbl">남는 활주로 <b class="${rem <= CLOSE_CALL_M ? 'hit' : ''}">${fmt(rem)} m</b> (아슬아슬은 ${CLOSE_CALL_M} m 이내)</span>` : '';
   const head = chips.some(c => c.includes(' new'))
     ? '<span class="total">새 진행!</span>' : '<span class="total zero">이번 조건</span>';
-  const practice = $('failForce').checked
-    ? `<span class="bonus">엔진 고장 연습: 정석대로 대처해서 무사히 끝내면 "변수 제거" +1${progress[`type_oei:${R.ac.id}`] ? '' : `, "형식 한정 · ${R.ac.short}" 엔진 고장 대처 완료`}</span>`
-    : `<span class="bonus">엔진이 고장 나면 정석대로 대처할 때 "변수 제거" +1${progress[`type_oei:${R.ac.id}`] ? '' : `, "형식 한정 · ${R.ac.short}" 진행`}</span>`;
-  box.innerHTML = head + (chips.join('') || '<span class="lbl">이 조건으로는 진행되는 업적이 없어요</span>') + remLine + penalty + practice;
+  const oeiNote = `<span class="bonus">엔진이 고장 나면 정석대로 대처할 때 "변수 제거" +1${progress[`type_oei:${R.ac.id}`] ? '' : `, "형식 한정 · ${R.ac.short}" 진행`}</span>`;
+  box.innerHTML = head + (chips.join('') || '<span class="lbl">이 조건으로는 진행되는 업적이 없어요</span>') + remLine + penalty + oeiNote;
 }
 
 // ===== 이전 비행과 비교: 조건을 바꾸면 무엇이 왜 달라지는지 =====
@@ -721,6 +723,7 @@ async function report() {
     const r = await api('/api/flight/finish', { flightId: anim.flightId, decision, abortIdx: anim.abortIdx ?? null });
     const before = { ...progress };
     const lines = [];
+    if (r.practice) lines.push('<p class="muted">연습 비행이라 업적에 기록되지 않았어요.</p>');
     if (r.tooFast) lines.push('<p class="muted">비행이 너무 빨리 끝나서 진행으로 치지 않았어요.</p>');
     for (const m of r.marks || []) {
       const [kind, ap, band] = m.split(':');
@@ -736,7 +739,7 @@ async function report() {
       lines.push(`<li><span>${isNew || kind === 'oei_ok' ? '★' : '✔️'} ${esc(label)}</span><b>${isNew || kind === 'oei_ok' ? '진행' : '이미 채움'}</b></li>`);
     }
     const got = (r.newAchievements || []).map(a => `<p class="levelup">업적 달성! ${esc(a.name)} <small>${esc(a.desc)}</small></p>`).join('');
-    const head = `<div class="xphead"><b class="gain${got ? '' : ' zero'}">${got ? '업적 달성!' : lines.length ? '업적 진행' : '진행 없음'}</b><span>업적 ${r.count} / ${r.totalCount}${r.remaining != null ? ` · 남은 활주로 ${fmt(r.remaining)} m` : ''}</span></div>`;
+    const head = `<div class="xphead"><b class="gain${got ? '' : ' zero'}">${got ? '업적 달성!' : r.practice ? '연습 비행' : r.marks?.length ? '업적 진행' : '진행 없음'}</b><span>업적 ${r.count} / ${r.totalCount}${r.remaining != null ? ` · 남은 활주로 ${fmt(r.remaining)} m` : ''}</span></div>`;
     box.innerHTML = head + got + (lines.length ? `<ul>${lines.filter(l => l.startsWith('<li')).join('')}</ul>` + lines.filter(l => !l.startsWith('<li')).join('') : '');
     box.hidden = false;
     await loadProfile();

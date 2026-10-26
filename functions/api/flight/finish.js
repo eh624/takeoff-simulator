@@ -37,10 +37,12 @@ async function handle({ request, env }) {
   // 최고 배속으로 재생해도 걸리는 시간보다 빨리 끝났으면 진행으로 치지 않음
   const elapsed = (Date.now() - Date.parse(flight.started_at)) / 1000;
   const tooFast = elapsed < (ev.simTime / MAX_SPEEDUP) * 0.8;
-  const marks = tooFast ? [] : flightMarks(R, ev);
+  // 연습 비행(엔진 고장 연습, V1에서 중단해 보기)은 업적 진행에 넣지 않음
+  const practice = (flight.mode ?? 'normal') !== 'normal';
+  const marks = tooFast || practice ? [] : flightMarks(R, ev);
 
   const remaining = (ev.kind === 'normal' || ev.kind === 'fail-go') && ev.safe ? Math.round(R.ap.tora - liftoffX(R, ev)) : null;
-  const outcome = { kind: ev.kind, safe: ev.safe, correct: ev.correct, endX: Math.round(ev.endX), remaining, tooFast, marks };
+  const outcome = { kind: ev.kind, safe: ev.safe, correct: ev.correct, endX: Math.round(ev.endX), remaining, tooFast, practice, marks };
 
   const progress = await db(env, 'rpc/record_flight', {
     method: 'POST',

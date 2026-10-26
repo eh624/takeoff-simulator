@@ -37,7 +37,7 @@ async function handle({ request, env }) {
   const failVa = fail ? pickFailVa(R, Math.random()) : null;
   const [row] = await db(env, 'flights', {
     method: 'POST', prefer: 'return=representation',
-    body: { user_id: user.id, inputs: inp, fail_va: failVa },
+    body: { user_id: user.id, inputs: inp, fail_va: failVa, mode },
   });
   return json({ flightId: row.id, failVa });
 }
