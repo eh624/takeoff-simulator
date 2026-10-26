@@ -785,15 +785,14 @@ function renderAchievements() {
   $('achNote').hidden = !!session;
   const apChips = prefix => `<div class="apgrid">${AIRPORTS.map(a => `<span class="${progress[prefix + a.code] ? 'on' : ''}" title="${esc(a.name)}">${a.code}</span>`).join('')}</div>`;
   // 공항 × 칸 표 (윈드 마스터: 풍속 구간, 전천후: 활주로 상태)
-  const grid = (prefix, cols, head, note) => `<div class="wgrid" role="table">
-      <div class="wrow head" role="row" style="--n:${cols.length}"><span></span>${head.map(h => `<span>${esc(String(h))}</span>`).join('')}</div>
-      ${AIRPORTS.map(a => {
+  const grid = (prefix, cols, head, note) => `<div class="wtable"><table>
+      <thead><tr><th scope="col"><span class="sr">공항</span></th>${head.map(h => `<th scope="col">${esc(String(h))}</th>`).join('')}</tr></thead>
+      <tbody>${AIRPORTS.map(a => {
         const has = c => progress[`${prefix}${a.code}:${c}`] > 0;
         const full = cols.every(has);
-        return `<div class="wrow" role="row" style="--n:${cols.length}"><span class="ap${full ? ' full' : ''}">${a.code}</span>${cols.map(c => `<span class="${has(c) ? 'on' : ''}">${has(c) ? '✓' : ''}</span>`).join('')}</div>`;
-      }).join('')}
-      <p class="muted">${note}</p>
-    </div>`;
+        return `<tr${full ? ' class="full"' : ''}><th scope="row" title="${esc(a.name)}">${a.code}</th>${cols.map(c => `<td>${has(c) ? '<span aria-label="성공">✔️</span>' : ''}</td>`).join('')}</tr>`;
+      }).join('')}</tbody>
+    </table><p class="muted">${note}</p></div>`;
   const tempGrid = grid('temp:', TEMP_BANDS, TEMP_BANDS.map(t => (t < 0 ? '−' + -t : t)), '한 공항의 6칸(기온 구간, °C: −30~−16, −15~−1, 0~14, 15~29, 30~44, 45)을 모두 채우면 1곳 완성');
   const rwyKeys = Object.keys(RUNWAY);
   const windGrid = grid('wind:', WIND_BANDS, WIND_BANDS, '한 공항의 6칸(풍속 구간, m/s)을 모두 채우면 1곳 완성');
@@ -807,11 +806,12 @@ function renderAchievements() {
     const tiers = ACHIEVEMENTS.filter(a => a.series === id);
     const cur = tiers[0].current(progress);
     const next = tiers.find(t => !myAch.has(t.key));
-    const pips = tiers.map(t => `<span class="pip${myAch.has(t.key) ? ' on' : ''}" title="${esc(t.name)}: ${esc(t.desc)}">${t.name.split(' ').pop()}</span>`).join('');
+    const got = tiers.filter(t => myAch.has(t.key)).pop();          // 달성한 가장 높은 단계
+    const shown = next || tiers[tiers.length - 1];
     const pct = next ? Math.min(100, Math.round((cur / next.goal) * 100)) : 100;
     return `<article class="ach${next ? '' : ' done'}">
-      <div class="atop"><h3>${esc(tiers[0].seriesName)}</h3><span class="pips">${pips}</span></div>
-      <p>${esc((next || tiers[tiers.length - 1]).desc)}</p>
+      <h3>${esc(tiers[0].seriesName)}${got ? ` <span class="tier">${got.name.split(' ').pop()}</span>` : ''}</h3>
+      <p>${esc(shown.desc)} <b class="acount">${fmt(Math.min(cur, shown.goal))}/${fmt(shown.goal)}</b></p>
       <div class="abar" aria-hidden="true"><i style="width:${pct}%"></i></div>
       ${extraFor[id] || ''}
     </article>`;

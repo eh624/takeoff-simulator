@@ -1,4 +1,5 @@
-
+// Cloudflare Workers로 배포할 때의 진입점
+// (Pages로 배포하면 이 파일은 쓰이지 않고 functions/ 폴더가 그대로 동작)
 import * as config from './functions/api/config.js';
 import * as start from './functions/api/flight/start.js';
 import * as finish from './functions/api/flight/finish.js';
