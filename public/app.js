@@ -371,7 +371,7 @@ function renderCompare() {
   const same = baseR && JSON.stringify(baseR.inp) === JSON.stringify(R.inp);
   if (!baseR || same) {
     box.classList.add('tip');
-    box.innerHTML = `<span class="ctitle">해볼 것</span><p>${TIPS[Math.floor(Date.now() / 60000) % TIPS.length]}</p>`;
+    box.innerHTML = `<span class="ctitle">추천!</span><p>${TIPS[Math.floor(Date.now() / 60000) % TIPS.length]}</p>`;
     return;
   }
   const A = baseR, B = R, kt = v => Math.round(v * KT);
