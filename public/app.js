@@ -753,7 +753,7 @@ async function report() {
 
 async function loadProfile() {
   if (!session) { profile = null; return renderAccount(); }
-  const { data } = await sb.from('profiles').select('nickname, nickname_set, xp, level, flights').eq('id', session.user.id).maybeSingle();
+  const { data } = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
   profile = data;
   renderAccount();
   if (profile && !profile.nickname_set && !nickSkipped) openNick(true);   // 첫 로그인: 아이디 정하기
@@ -766,7 +766,7 @@ function renderAccount() {
   $('guestHint').hidden = !!session;
   if (!session) return;
   const n = myAch.size, total = ACHIEVEMENTS.length;
-  $('meName').textContent = profile?.nickname ?? '조종사';
+  $('meName').textContent = profile?.nickname ?? '유저';
   $('meRank').textContent = `업적 ${n} / ${total}`;
   $('meBar').style.width = `${Math.round((n / total) * 100)}%`;
   $('meXp').textContent = `비행 ${fmt(profile?.flights ?? 0)}회`;
@@ -825,13 +825,31 @@ function renderAchievements() {
 
 async function loadBoard() {
   if (!sb) return;
-  const { data, error } = await sb.from('profiles').select('nickname, achievements').order('achievements', { ascending: false }).order('achievements_at', { ascending: true, nullsFirst: false }).limit(20);
+  const { data, error } = await sb.from('profiles').select('nickname, achievements').eq('on_board', true).order('achievements', { ascending: false }).order('achievements_at', { ascending: true, nullsFirst: false }).limit(20);
   if (error) return;
   $('board').innerHTML = data.length
     ? data.map((p, i) => `<li><span class="pos">${i + 1}</span><span class="nm">${esc(p.nickname)}</span><b>업적 ${p.achievements}</b></li>`).join('')
     : '<li class="muted">아직 기록이 없습니다.</li>';
+  renderBoardOpt();
   $('boardCard').hidden = false;
 }
+
+// 순위표 참여: 로그인한 사용자만 켜고 끌 수 있음
+function renderBoardOpt() {
+  const show = !!(session && profile && 'on_board' in profile);
+  $('boardOpt').hidden = !show;
+  if (show) $('boardOn').checked = profile.on_board;
+}
+$('boardOn').addEventListener('change', async e => {
+  const on = e.target.checked;
+  e.target.disabled = true;
+  const { error } = await sb.from('profiles').update({ on_board: on }).eq('id', session.user.id);
+  e.target.disabled = false;
+  if (error) { e.target.checked = !on; $('boardOptErr').hidden = false; return; }
+  $('boardOptErr').hidden = true;
+  profile.on_board = on;
+  loadBoard();
+});
 
 function loginError(msg) { const e = $('loginErr'); e.textContent = msg; e.hidden = false; $('loginInfo').hidden = true; openLogin(); }
 function openLogin() { const d = $('loginBox'); if (!d.open) d.showModal(); }
@@ -886,7 +904,7 @@ let pwMode = 'login';
 function setPwMode(mode) {
   pwMode = mode;
   const signup = mode === 'signup';
-  $('loginTitle').textContent = signup ? '조종사 등록' : '조종사 로그인';
+  $('loginTitle').textContent = signup ? '회원가입' : '로그인';
   $('pwSubmit').textContent = signup ? '가입하기' : '로그인';
   $('pwSwitchText').textContent = signup ? '이미 계정이 있나요?' : '처음이신가요?';
   $('pwSwitch').textContent = signup ? '로그인' : '이메일로 가입하기';
@@ -920,15 +938,17 @@ $('login-google').addEventListener('click', () => oauth('google'));
 $('login-apple').addEventListener('click', () => oauth('apple'));
 $('login-naver').addEventListener('click', () => { location.href = '/auth/naver/login'; });
 $('logoutBtn').addEventListener('click', async () => { await sb.auth.signOut(); session = null; profile = null; renderAccount(); });
-// ===== 조종사 아이디 =====
+// ===== 아이디 =====
 const NICK_RE = /^[가-힣A-Za-z0-9_]{2,12}$/;
 let nickRequired = false, nickSkipped = false;
 function openNick(required) {
   const d = $('nickDlg');
   nickRequired = required;
-  $('nickTitle').textContent = required ? '조종사 아이디 정하기' : '아이디 바꾸기';
+  $('nickTitle').textContent = required ? '아이디 정하기' : '아이디 바꾸기';
   $('nickCancel').textContent = required ? '나중에' : '취소';
   $('nick').value = profile?.nickname_set ? profile.nickname : '';
+  $('nickBoardRow').hidden = !(profile && 'on_board' in profile);
+  $('nickBoard').checked = profile?.on_board ?? true;
   $('nickErr').hidden = true;
   if (!d.open) d.showModal();
   $('nick').focus();
@@ -941,10 +961,12 @@ $('nickForm').addEventListener('submit', async e => {
   const name = $('nick').value.trim();
   if (!NICK_RE.test(name)) return nickError('한글·영문·숫자·밑줄(_)로 2~12자를 입력하세요.');
   $('nickSave').disabled = true;
-  const { error } = await sb.from('profiles').update({ nickname: name }).eq('id', session.user.id);
+  const patch = { nickname: name };
+  if (profile && 'on_board' in profile) patch.on_board = $('nickBoard').checked;
+  const { error } = await sb.from('profiles').update(patch).eq('id', session.user.id);
   $('nickSave').disabled = false;
   if (error) {
-    if (error.code === '23505') return nickError('이미 다른 조종사가 쓰는 아이디입니다.');
+    if (error.code === '23505') return nickError('이미 다른 유저가 쓰는 아이디입니다.');
     if (error.code === '23514') return nickError('한글·영문·숫자·밑줄(_)로 2~12자를 입력하세요.');
     return nickError('저장하지 못했습니다. 다시 시도하세요.');
   }
